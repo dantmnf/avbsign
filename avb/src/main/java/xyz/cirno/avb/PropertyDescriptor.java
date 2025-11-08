@@ -15,16 +15,22 @@ public class PropertyDescriptor extends AvbDescriptor {
         this.value = value;
     }
 
-    static PropertyDescriptor readFromPayload(ByteBuffer buf) {
+    static PropertyDescriptor parseFromPayload(ByteBuffer buf) {
         Logger.debug("PropertyDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var keyLen = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(keyLen);
         var valueLen = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(valueLen);
         var keyBytes = new byte[(int) keyLen];
         buf.get(keyBytes);
-        assert buf.get() == 0;
+        if(buf.get() != 0){
+            throw new InvalidAvbDataException("string without nul terminator in PropertyDescriptor");
+        }
         var valueBytes = new byte[(int) valueLen];
         buf.get(valueBytes);
-        assert buf.get() == 0;
+        if(buf.get() != 0){
+            throw new InvalidAvbDataException("string without nul terminator in PropertyDescriptor");
+        }
         var name = new String(keyBytes, StandardCharsets.UTF_8);
         var value = new String(valueBytes, StandardCharsets.UTF_8);
         return new PropertyDescriptor(name, value);

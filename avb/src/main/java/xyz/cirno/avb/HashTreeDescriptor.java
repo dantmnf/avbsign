@@ -28,7 +28,7 @@ public class HashTreeDescriptor extends AvbDescriptor {
         super(TAG_HASHTREE);
     }
 
-    static HashTreeDescriptor readFromPayload(ByteBuffer buf) {
+    static HashTreeDescriptor parseFromPayload(ByteBuffer buf) {
         // The fixed-size part of the C struct is 164 bytes.
         final int FIXED_SIZE = 164;
         if (buf.remaining() < FIXED_SIZE) {

@@ -8,7 +8,7 @@ java {
 
 dependencies {
     implementation libs.bcpkix.lts8on
-    implementation libs.bcprov.lts8on
+//    implementation libs.bcprov.lts8on
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.apache.commons:commons-compress:1.28.0'

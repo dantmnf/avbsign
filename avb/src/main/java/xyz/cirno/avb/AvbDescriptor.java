@@ -27,6 +27,7 @@ public abstract class AvbDescriptor {
     public static AvbDescriptor parseFrom(ByteBuffer buf) {
         var tag = buf.getLong();
         var numBytesFollowing = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(numBytesFollowing);
         if (numBytesFollowing > buf.remaining()) {
             throw new InvalidAvbDataException("descriptor size overflow");
         }
@@ -34,20 +35,19 @@ public abstract class AvbDescriptor {
         var buf2 = ByteBuffer.wrap(payload);
         buf.get(payload);
 
-
         if (tag == TAG_PROPERTY) {
-            return PropertyDescriptor.readFromPayload(buf2);
+            return PropertyDescriptor.parseFromPayload(buf2);
         } else if (tag == TAG_HASHTREE) {
-            return HashTreeDescriptor.readFromPayload(buf2);
+            return HashTreeDescriptor.parseFromPayload(buf2);
         } else if (tag == TAG_HASH) {
-            return HashDescriptor.readFromPayload(buf2);
+            return HashDescriptor.parseFromPayload(buf2);
         } else if (tag == TAG_KERNEL_CMDLINE) {
-            return KernelCmdlineDescriptor.readFromPayload(buf2);
+            return KernelCmdlineDescriptor.parseFromPayload(buf2);
         } else if (tag == TAG_CHAIN_PARTITION) {
-            return ChainPartitionDescriptor.readFromPayload(buf2);
+            return ChainPartitionDescriptor.parseFromPayload(buf2);
         } else {
             Logger.warn("Unknown AVB descriptor tag: " + tag);
-            return new UnknownAvbDescriptor(tag, payload);
+            return new UnparsedAvbDescriptor(tag, payload);
         }
     }
 }

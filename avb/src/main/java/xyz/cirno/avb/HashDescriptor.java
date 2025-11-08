@@ -33,7 +33,7 @@ public class HashDescriptor extends AvbDescriptor {
         this.flags = flags;
     }
 
-    static HashDescriptor readFromPayload(ByteBuffer buf) {
+    static HashDescriptor parseFromPayload(ByteBuffer buf) {
         final int FIXED_SIZE = DESCRIPTOR_SIZE - DESCRIPTOR_HEADER_SIZE;
         if (buf.remaining() < FIXED_SIZE) {
             return null;
@@ -42,6 +42,7 @@ public class HashDescriptor extends AvbDescriptor {
         var h = new HashDescriptor();
 
         h.imageSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.imageSize);
 
         var hashAlgBytes = new byte[32];
         buf.get(hashAlgBytes);
@@ -50,8 +51,11 @@ public class HashDescriptor extends AvbDescriptor {
         h.hashAlgorithm = new String(hashAlgBytes, 0, z, StandardCharsets.UTF_8);
 
         int partitionLen = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(partitionLen);
         int saltLen = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(saltLen);
         int digestLen = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(digestLen);
         h.flags = buf.getInt();
 
         buf.get(h.reserved);

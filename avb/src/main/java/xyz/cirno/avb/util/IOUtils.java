@@ -2,6 +2,7 @@ package xyz.cirno.avb.util;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 
 public class IOUtils {
@@ -11,6 +12,16 @@ public class IOUtils {
             if (read == -1) {
                 throw new IOException("Unexpected end of stream");
             }
+        }
+    }
+
+    public static void readFullyAt(FileChannel ch, ByteBuffer buf, long pos) throws IOException {
+        while (buf.hasRemaining()) {
+            int read = ch.read(buf, pos);
+            if (read == -1) {
+                throw new IOException("Unexpected end of stream");
+            }
+            pos += read;
         }
     }
 

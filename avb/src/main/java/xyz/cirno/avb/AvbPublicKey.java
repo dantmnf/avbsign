@@ -23,8 +23,9 @@ public class AvbPublicKey {
         keySizeBits = roundToPowerOf2(publicKey.getModulus().bitLength());
     }
 
-    public static AvbPublicKey readFrom(ByteBuffer buf) {
+    public static AvbPublicKey parseFrom(ByteBuffer buf) {
         var bits = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(bits);
         // n0inv is stored but we don't need it to reconstruct the public key
         var n0inv = buf.getInt();
         int byteLen = bits / 8;
@@ -70,7 +71,7 @@ public class AvbPublicKey {
         return prev == 0 ? 1 : prev << 1;
     }
 
-    public ByteBuffer asByteBuffer() {
+    public byte[] toByteArray() {
         var modulus = publicKey.getModulus();
         var b = BigInteger.ONE.shiftLeft(32);
         // Use BigInteger.modInverse instead of custom implementation
@@ -93,7 +94,18 @@ public class AvbPublicKey {
             buf.put(zeros, 0, padSize);
         }
         buf.put(r2modNBytes, Math.max(0, r2modNBytes.length - keySizeBits / 8), Math.min(r2modNBytes.length, keySizeBits / 8));
-        buf.flip();
-        return buf;
+        return buf.array();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        AvbPublicKey that = (AvbPublicKey) o;
+        return Objects.equals(publicKey, that.publicKey);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(publicKey);
     }
 }

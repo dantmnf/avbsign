@@ -22,13 +22,14 @@ public class KernelCmdlineDescriptor extends AvbDescriptor {
         this.kernelCmdline = kernelCmdline;
     }
 
-    static KernelCmdlineDescriptor readFromPayload(ByteBuffer buf) {
+    static KernelCmdlineDescriptor parseFromPayload(ByteBuffer buf) {
         final int FIXED_SIZE = 8; // flags(4) + length(4)
         Logger.debug("KernelCmdlineDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         if (buf.remaining() < FIXED_SIZE) return null;
         var h = new KernelCmdlineDescriptor();
         h.flags = buf.getInt();
         int len = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(len);
         var cmdBytes = new byte[len];
         if (len > 0) buf.get(cmdBytes);
         h.kernelCmdline = new String(cmdBytes, StandardCharsets.UTF_8);

@@ -4,7 +4,7 @@ import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 
 public class VerifiedBootHeader {
-    public static final int AVB_MAGIC = 0x41564230; // big endian
+    public static final int AVB_MAGIC = 0x41564230; // big endian 'AVB0'
     public static final int HEADER_SIZE = 256;
 
     public static final int FLAG_HASHTREE_DISABLED = (1 << 0);
@@ -44,7 +44,7 @@ public class VerifiedBootHeader {
     public final byte[] reserved = new byte[80];
 
 
-    public static VerifiedBootHeader readFrom(ByteBuffer buf) {
+    public static VerifiedBootHeader parseFrom(ByteBuffer buf) {
         if (buf.remaining() < HEADER_SIZE) {
             throw new BufferUnderflowException();
         }
@@ -58,18 +58,30 @@ public class VerifiedBootHeader {
         h.requiredLibavbVersionMajor = buf.getInt();
         h.requiredLibavbVersionMinor = buf.getInt();
         h.authenticationDataBlockSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.authenticationDataBlockSize);
         h.auxiliaryDataBlockSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.auxiliaryDataBlockSize);
         h.algorithmType = AvbAlgorithmType.fromInt(buf.getInt());
         h.hashOffset = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.hashOffset);
         h.hashSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.hashSize);
         h.signatureOffset = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.signatureOffset);
         h.signatureSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.signatureSize);
         h.publicKeyOffset = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.publicKeyOffset);
         h.publicKeySize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.publicKeySize);
         h.publicKeyMetadataOffset = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.publicKeyMetadataOffset);
         h.publicKeyMetadataSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.publicKeyMetadataSize);
         h.descriptorsOffset = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.descriptorsOffset);
         h.descriptorsSize = buf.getLong();
+        InvalidAvbDataException.checkUnsignedOverflow(h.descriptorsSize);
         h.rollbackIndex = buf.getLong();
         h.flags = buf.getInt();
         h.rollbackIndexLocation = buf.getInt();

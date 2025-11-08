@@ -9,6 +9,7 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 
 import java.io.FileReader;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,14 +19,28 @@ import java.security.PrivateKey;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.Arrays;
 
+import xyz.cirno.avb.AvbPartitionInfo;
+import xyz.cirno.avb.AvbPublicKey;
 import xyz.cirno.avb.ParsedVerifiedBootMetaImage;
+import xyz.cirno.avb.VerifiedBootMetaImage;
 
 public class AvbUnitTest {
     @Test
     public void parseHeaderTest() throws Throwable {
         Assert.assertTrue(testLoadImage("/vbmeta.img").signatureValid);
-        Assert.assertTrue(testLoadImage("/boot.img").signatureValid);
-        Assert.assertNotNull(testLoadImage("/init_boot.img"));
+    }
+
+    @Test
+    public void parseChainedPartitionTest() throws Throwable {
+        try (var ch = FileChannel.open(getResorucePath("/boot.img"), StandardOpenOption.READ)) {
+            var info = AvbPartitionInfo.ofPartition(ch);
+            Assert.assertNotNull(info);
+            Assert.assertNotNull(info.footer);
+            ch.position(info.vbmetaOffset);
+            var vbmeta = VerifiedBootMetaImage.parseFrom(ch);
+            Assert.assertNotNull(vbmeta);
+            Assert.assertTrue(vbmeta.signatureValid);
+        }
     }
 
     @Test
@@ -33,15 +48,17 @@ public class AvbUnitTest {
         var parsed = testLoadImage("/vbmeta.img");
         Assert.assertTrue(parsed.signatureValid);
         var pubkey = parsed.publicKey;
-        var pubkeyBytes = pubkey.asByteBuffer();
+        var pubkeyBytes = pubkey.toByteArray();
         var refPubkeyBytes = Files.readAllBytes(getResorucePath("/avb_pubkey.bin"));
-        Assert.assertArrayEquals(refPubkeyBytes, pubkeyBytes.array());
+        var refPubkey = AvbPublicKey.parseFrom(ByteBuffer.wrap(pubkeyBytes));
+        Assert.assertArrayEquals(refPubkeyBytes, pubkeyBytes);
+        Assert.assertEquals(pubkey, refPubkey);
         //System.out.println(parsed.descriptors.size());
 
         var privkey = readPrivateKey(getResorucePath("/testkey_rsa4096.pem").toString());
         Assert.assertNotNull(privkey);
 
-        var resigned = parsed.asSignedByteArray((RSAPrivateCrtKey) privkey);
+        var resigned = parsed.toSignedByteArray((RSAPrivateCrtKey) privkey);
         var origArray = Files.readAllBytes(getResorucePath("/vbmeta.img"));
         if (origArray.length > resigned.length) {
             for (var i = resigned.length; i < origArray.length; i++) {
@@ -80,7 +97,7 @@ public class AvbUnitTest {
 
     public ParsedVerifiedBootMetaImage testLoadImage(String path) throws Throwable {
         var ch = FileChannel.open(getResorucePath(path), StandardOpenOption.READ);
-        var parsed = ParsedVerifiedBootMetaImage.readFrom(ch);
+        var parsed = VerifiedBootMetaImage.parseFrom(ch);
         Assert.assertNotNull(parsed);
         return parsed;
     }

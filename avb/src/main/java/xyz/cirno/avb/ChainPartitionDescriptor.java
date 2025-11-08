@@ -29,13 +29,15 @@ public class ChainPartitionDescriptor extends AvbDescriptor {
         this.flags = flags;
     }
 
-    static ChainPartitionDescriptor readFromPayload(ByteBuffer buf) {
+    static ChainPartitionDescriptor parseFromPayload(ByteBuffer buf) {
         if (buf.remaining() < DESCRIPTOR_SIZE - DESCRIPTOR_HEADER_SIZE) return null;
         Logger.debug("ChainPartitionDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var h = new ChainPartitionDescriptor();
         h.rollbackIndexLocation = buf.getInt();
         int partitionLen = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(partitionLen);
         int pubKeyLen = buf.getInt();
+        InvalidAvbDataException.checkUnsignedOverflow(pubKeyLen);
         h.flags = buf.getInt();
         buf.get(h.reserved);
 
@@ -46,7 +48,7 @@ public class ChainPartitionDescriptor extends AvbDescriptor {
         var publicKeyBytes = new byte[pubKeyLen];
         if (pubKeyLen > 0) buf.get(publicKeyBytes);
 
-        h.publicKey = AvbPublicKey.readFrom(ByteBuffer.wrap(publicKeyBytes));
+        h.publicKey = AvbPublicKey.parseFrom(ByteBuffer.wrap(publicKeyBytes));
 
         return h;
     }
@@ -54,7 +56,7 @@ public class ChainPartitionDescriptor extends AvbDescriptor {
     @Override
     public byte[] toByteArray() {
         var partBytes = partitionName != null ? partitionName.getBytes(StandardCharsets.UTF_8) : new byte[0];
-        var keyBytes = publicKey != null ? publicKey.asByteBuffer().array() : new byte[0];
+        var keyBytes = publicKey != null ? publicKey.toByteArray() : new byte[0];
 
         int bodyLen = DESCRIPTOR_SIZE - DESCRIPTOR_HEADER_SIZE + partBytes.length + keyBytes.length;
         if (bodyLen % 8 != 0) bodyLen += 8 - (bodyLen % 8);
