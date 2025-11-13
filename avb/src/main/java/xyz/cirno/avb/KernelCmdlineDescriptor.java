@@ -3,8 +3,6 @@ package xyz.cirno.avb;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-import xyz.cirno.avb.util.Logger;
-
 public class KernelCmdlineDescriptor extends AvbDescriptor {
     public static final int FLAG_USE_ONLY_IF_HASHTREE_NOT_DISABLED = (1 << 0);
     public static final int FLAG_USE_ONLY_IF_HASHTREE_DISABLED = (1 << 1);
@@ -24,7 +22,6 @@ public class KernelCmdlineDescriptor extends AvbDescriptor {
 
     static KernelCmdlineDescriptor parseFromPayload(ByteBuffer buf) {
         final int FIXED_SIZE = 8; // flags(4) + length(4)
-        Logger.debug("KernelCmdlineDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         if (buf.remaining() < FIXED_SIZE) return null;
         var h = new KernelCmdlineDescriptor();
         h.flags = buf.getInt();
@@ -42,7 +39,6 @@ public class KernelCmdlineDescriptor extends AvbDescriptor {
         int bodyLen = 8 + cmdBytes.length;
         if (bodyLen % 8 != 0) bodyLen += 8 - (bodyLen % 8);
         int totalLen = 16 + bodyLen;
-        Logger.debug("%s: marshaling to %d bytes", getClass(), totalLen);
         var buf = ByteBuffer.allocate(totalLen);
         buf.putLong(tag);
         buf.putLong(bodyLen);

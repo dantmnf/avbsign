@@ -10,7 +10,9 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.RSAPublicKeySpec;
 import java.util.Objects;
 
-public class AvbPublicKey {
+import xyz.cirno.avb.util.IOUtils;
+
+public final class AvbPublicKey {
     private final RSAPublicKey publicKey;
     public static final int EXPONENT = 65537;
     public final int keySizeBits;
@@ -47,7 +49,7 @@ public class AvbPublicKey {
 
     public static AvbPublicKey fromPrivateKey(RSAPrivateCrtKey privateKey) {
         var modulus = privateKey.getModulus();
-        var exp = BigInteger.valueOf(EXPONENT);
+        var exp = privateKey.getPublicExponent();
         try {
             var spec = new RSAPublicKeySpec(modulus, exp);
             var kf = KeyFactory.getInstance("RSA");
@@ -74,7 +76,6 @@ public class AvbPublicKey {
     public byte[] toByteArray() {
         var modulus = publicKey.getModulus();
         var b = BigInteger.ONE.shiftLeft(32);
-        // Use BigInteger.modInverse instead of custom implementation
         var n0inv = b.subtract(modulus.modInverse(b));
         var r = BigInteger.ONE.shiftLeft(modulus.bitLength());
         var r2modN = r.multiply(r).mod(modulus);
@@ -98,6 +99,11 @@ public class AvbPublicKey {
     }
 
     @Override
+    public String toString() {
+        return "AvbPublicKey{keySizeBits=" + keySizeBits + ", sha256=" + IOUtils.sha256ToHex(this.toByteArray()) + "}";
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
         AvbPublicKey that = (AvbPublicKey) o;
@@ -106,6 +112,6 @@ public class AvbPublicKey {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(publicKey);
+        return Objects.hash(getClass(), publicKey);
     }
 }

@@ -2,6 +2,9 @@ package xyz.cirno.avb;
 
 import static xyz.cirno.avb.util.IOUtils.alignTo;
 
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -12,9 +15,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Signature;
 import java.security.SignatureException;
-import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import xyz.cirno.avb.util.IOUtils;
 import xyz.cirno.avb.util.Logger;
@@ -74,7 +77,7 @@ public class VerifiedBootMetaImage {
 
         //noinspection LoopStatementThatDoesntLoop
         while (digest != null) {
-            Logger.info("verifying digest");
+            // Logger.info("verifying digest");
             MessageDigest hasher;
             var digestAlgo = header.algorithmType.getDigestAlgorithm();
             if (digestAlgo == null) {
@@ -94,7 +97,7 @@ public class VerifiedBootMetaImage {
                 Logger.warn("digest mismatch");
             }
             if (signature != null && publicKey != null) {
-                Logger.info("verifying signature");
+                // Logger.info("verifying signature");
                 var signatureAlgorithm = header.algorithmType.getSignatureAlgorithm();
                 if (signatureAlgorithm == null) {
                     Logger.warn("unsupported signature algorithm: " + header.algorithmType);
@@ -116,7 +119,7 @@ public class VerifiedBootMetaImage {
                 if (!sigValid) {
                     Logger.warn("signature invalid");
                 } else {
-                    Logger.info("signature valid");
+                    // Logger.info("signature valid");
                 }
             } else {
                 Logger.warn("the header contains digest but no signature or public key");
@@ -128,7 +131,7 @@ public class VerifiedBootMetaImage {
 
     public byte[] toUnsignedByteArray() {
         var serializedDescriptors = descriptors.stream().map(AvbDescriptor::toByteArray).toList();
-        var descSize = serializedDescriptors.stream().mapToInt(x->x.length).sum();
+        var descSize = serializedDescriptors.stream().mapToInt(x -> x.length).sum();
         var auxSize = alignTo(descSize, 64);
 
         header.authenticationDataBlockSize = 0;
@@ -155,15 +158,21 @@ public class VerifiedBootMetaImage {
         return buf.array();
     }
 
-    public byte[] toSignedByteArray(RSAPrivateCrtKey privateKey) {
+    public byte[] toByteArray(@Nullable AvbKeyPair keyPair) {
+        return keyPair == null ? toUnsignedByteArray() : toSignedByteArray(keyPair);
+    }
+
+    public byte[] toSignedByteArray(@NotNull AvbKeyPair keyPair) {
+        Objects.requireNonNull(keyPair);
         if (header.algorithmType == AvbAlgorithmType.NONE) {
             throw new InvalidAvbDataException("cannot create signed header with algorithmType=NONE");
         }
-        var pubkey = AvbPublicKey.fromPrivateKey(privateKey);
+        var pubkey = keyPair.publicKey;
+        var privateKey = keyPair.privateKey;
         var pubkeyBuf = pubkey.toByteArray();
         var metadataSize = publicKeyMetadata != null ? publicKeyMetadata.length : 0;
         var serializedDescriptors = descriptors.stream().map(AvbDescriptor::toByteArray).toList();
-        var descriptorsSize = serializedDescriptors.stream().mapToInt(x->x.length).sum();
+        var descriptorsSize = serializedDescriptors.stream().mapToInt(x -> x.length).sum();
         var auxSize = alignTo(pubkeyBuf.length + metadataSize + descriptorsSize, 64);
 
         header.auxiliaryDataBlockSize = auxSize;
@@ -203,7 +212,7 @@ public class VerifiedBootMetaImage {
         hasher.update(headerBuf);
         hasher.update(auxBuf.duplicate());
         var digest = hasher.digest();
-        var authBuf = ByteBuffer.allocate((int)header.authenticationDataBlockSize);
+        var authBuf = ByteBuffer.allocate((int) header.authenticationDataBlockSize);
         authBuf.put(digest);
 
         try {
@@ -225,7 +234,7 @@ public class VerifiedBootMetaImage {
 
         authBuf.position(0);
 
-        var totalSize = alignTo(headerBuf.length + authBuf.remaining() + auxBuf.remaining(), 4096);
+        var totalSize = headerBuf.length + authBuf.remaining() + auxBuf.remaining();
         var buf = ByteBuffer.allocate(totalSize);
         buf.put(headerBuf);
         buf.put(authBuf);

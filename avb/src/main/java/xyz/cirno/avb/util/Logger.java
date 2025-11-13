@@ -21,7 +21,7 @@ public class Logger {
     }
 
     public static void log(int level, String msg) {
-        System.err.println("[" + levelToString(level) + "] " + msg);
+        System.out.println("[" + levelToString(level) + "] " + msg);
     }
 
     public static void log(int level, String format, Object... args) {

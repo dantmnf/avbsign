@@ -3,8 +3,6 @@ package xyz.cirno.avb;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-import xyz.cirno.avb.util.Logger;
-
 public class HashTreeDescriptor extends AvbDescriptor {
     public static final int FLAG_DO_NOT_USE_AB = (1 << 0);
     public static final int FLAG_CHECK_AT_MOST_ONCE = (1 << 1);
@@ -34,7 +32,6 @@ public class HashTreeDescriptor extends AvbDescriptor {
         if (buf.remaining() < FIXED_SIZE) {
             return null;
         }
-        Logger.debug("HashTreeDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var h = new HashTreeDescriptor();
 
         h.dmVerityVersion = buf.getInt();
@@ -90,7 +87,6 @@ public class HashTreeDescriptor extends AvbDescriptor {
         if (bodyLen % 8 != 0) bodyLen += 8 - (bodyLen % 8);
         int totalLen = 16 + bodyLen;
 
-        Logger.debug("%s: marshaling to %d bytes", getClass(), totalLen);
 
         var buf = ByteBuffer.allocate(totalLen);
         buf.putLong(tag);

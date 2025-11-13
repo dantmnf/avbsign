@@ -49,4 +49,28 @@ public class VerifiedBootFooter {
         return result;
     }
 
+    public byte[] toByteArray() {
+        var buf = ByteBuffer.allocate(FOOTER_SIZE);
+        buf.putInt(MAGIC);
+        buf.putInt(versionMajor);
+        buf.putInt(versionMinor);
+        buf.putLong(originalImageSize);
+        buf.putLong(vbmetaOffset);
+        buf.putLong(vbmetaSize);
+        buf.put(reserved);
+        return buf.array();
+    }
+
+    @SuppressWarnings("MethodDoesntCallSuperMethod")
+    @Override
+    public VerifiedBootFooter clone() {
+        var copy = new VerifiedBootFooter();
+        copy.versionMajor = this.versionMajor;
+        copy.versionMinor = this.versionMinor;
+        copy.originalImageSize = this.originalImageSize;
+        copy.vbmetaOffset = this.vbmetaOffset;
+        copy.vbmetaSize = this.vbmetaSize;
+        System.arraycopy(this.reserved, 0, copy.reserved, 0, this.reserved.length);
+        return copy;
+    }
 }

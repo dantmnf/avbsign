@@ -1,0 +1,30 @@
+tasks.register('packageMagisk', Zip) {
+    dependsOn(":app:packageRelease")
+    from('content/') {
+        include '**/*'
+        eachFile { details ->
+            if (details.path.startsWith('tools/bootctl_')) {
+                details.mode = 0755
+            }
+        }
+    }
+    from(tasks.getByPath(":app:packageRelease").outputs.files.asFileTree.filter { it.name.endsWith(".apk") }) {
+        into("/")
+        rename { String fileName -> 'avbsign.apk' }
+    }
+
+    from(new File(rootProject.projectDir, 'keys')) {
+        include '**/*'
+        into('keys')
+    }
+
+    archiveFileName = 'avbsign.zip'
+    destinationDirectory = file("$rootDir/build")
+
+    doFirst {
+        def outFile = archiveFile.get().asFile
+        if (outFile.exists()) {
+            outFile.delete()
+        }
+    }
+}

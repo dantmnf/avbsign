@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
 }
+
 java {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
@@ -8,6 +9,7 @@ java {
 
 dependencies {
     implementation libs.bcpkix.lts8on
+    compileOnly libs.annotations
 //    implementation libs.bcprov.lts8on
 
     testImplementation 'junit:junit:4.13.2'
@@ -22,4 +24,7 @@ test {
         exceptionFormat "short"
         showStandardStreams = true
     }
+    systemProperty "test.imagesDir", new File(rootProject.projectDir, "images").absolutePath
+    systemProperty "test.keysDir", new File(rootProject.projectDir, "keys").absolutePath
+    systemProperty "test.outputDir", new File(project.projectDir, "build/test-results").absolutePath
 }

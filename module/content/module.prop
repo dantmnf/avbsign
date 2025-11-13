@@ -1,0 +1,6 @@
+id=avbsign
+name=AVB Signer
+version=1.0
+versionCode=1
+author=Not you
+description=Verify and fix AVB signatures with known private keys.

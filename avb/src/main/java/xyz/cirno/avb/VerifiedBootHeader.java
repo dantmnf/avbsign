@@ -124,4 +124,9 @@ public class VerifiedBootHeader {
         buf.put(reserved);
         return buf.array();
     }
+
+    @Override
+    public VerifiedBootHeader clone() {
+        return parseFrom(ByteBuffer.wrap(toByteArray()));
+    }
 }

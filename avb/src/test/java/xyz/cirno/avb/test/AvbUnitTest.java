@@ -19,6 +19,7 @@ import java.security.PrivateKey;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.Arrays;
 
+import xyz.cirno.avb.AvbKeyPair;
 import xyz.cirno.avb.AvbPartitionInfo;
 import xyz.cirno.avb.AvbPublicKey;
 import xyz.cirno.avb.ParsedVerifiedBootMetaImage;
@@ -54,11 +55,12 @@ public class AvbUnitTest {
         Assert.assertArrayEquals(refPubkeyBytes, pubkeyBytes);
         Assert.assertEquals(pubkey, refPubkey);
         //System.out.println(parsed.descriptors.size());
+        var keyDir = Paths.get(System.getProperty("test.keysDir", "../keys"));
 
-        var privkey = readPrivateKey(getResorucePath("/testkey_rsa4096.pem").toString());
-        Assert.assertNotNull(privkey);
+        var keypair = AvbKeyPair.fromPrivateKeyPem(keyDir.resolve("testkey_rsa4096.pem"));
+        Assert.assertNotNull(keypair);
 
-        var resigned = parsed.toSignedByteArray((RSAPrivateCrtKey) privkey);
+        var resigned = parsed.toSignedByteArray(keypair);
         var origArray = Files.readAllBytes(getResorucePath("/vbmeta.img"));
         if (origArray.length > resigned.length) {
             for (var i = resigned.length; i < origArray.length; i++) {
@@ -88,11 +90,13 @@ public class AvbUnitTest {
     }
 
 
-    public Path getResorucePath(String identifier) throws Throwable {
-        var url = getClass().getResource(identifier);
-        Assert.assertNotNull(url);
-        Assert.assertTrue("file".equalsIgnoreCase(url.getProtocol()));
-        return Paths.get(url.toURI());
+    public Path getResorucePath(String identifier) {
+        if (identifier.endsWith(".pem")) {
+            String keyDir = System.getProperty("test.keysDir", "../keys");
+            return Paths.get(keyDir).resolve(identifier.substring(1));
+        }
+        String imgDir = System.getProperty("test.imagesDir", "../images");
+        return Paths.get(imgDir).resolve(identifier.substring(1));
     }
 
     public ParsedVerifiedBootMetaImage testLoadImage(String path) throws Throwable {

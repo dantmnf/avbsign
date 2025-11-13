@@ -12,23 +12,32 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
+    packagingOptions {
+        resources {
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            excludes += "META-INF/services/java.security.Provider"
+            excludes += "org/bouncycastle/**"
+        }
+    }
+
 }
 
 dependencies {
-    implementation(':avb')
-    implementation libs.jackson.dataformat.toml
+    compileOnly libs.annotations
+    implementation project(':avb')
+    coreLibraryDesugaring  'com.android.tools:desugar_jdk_libs:2.1.5'
 }

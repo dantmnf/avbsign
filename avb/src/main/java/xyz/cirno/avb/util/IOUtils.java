@@ -4,6 +4,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class IOUtils {
     public static void readFully(ReadableByteChannel ch, ByteBuffer buf) throws IOException {
@@ -25,6 +28,12 @@ public class IOUtils {
         }
     }
 
+    public static void writeFully(WritableByteChannel ch, ByteBuffer buf) throws IOException {
+        while (buf.hasRemaining()) {
+            ch.write(buf);
+        }
+    }
+
     public static byte[] readArray(ReadableByteChannel ch, int size) throws IOException {
         var buf = ByteBuffer.allocate(size);
         readFully(ch, buf);
@@ -37,6 +46,25 @@ public class IOUtils {
         return result;
     }
 
+    public static String bytesToHex(byte[] bytes) {
+        var sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    public static String sha256ToHex(byte[] data) {
+        MessageDigest digest = null;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException(e);
+        }
+        var hash = digest.digest(data);
+        return bytesToHex(hash);
+    }
+
     public static ByteBuffer slice(ByteBuffer orig, int offset, int count) {
         if (orig.hasArray()) {
             var arr = orig.array();
@@ -46,7 +74,7 @@ public class IOUtils {
             var buf2 = orig.duplicate();
             buf2.clear();
             buf2.position(offset);
-            buf2.limit(offset+count);
+            buf2.limit(offset + count);
             return buf2.slice();
         }
     }

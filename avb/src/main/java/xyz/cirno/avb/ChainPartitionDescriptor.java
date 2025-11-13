@@ -3,8 +3,6 @@ package xyz.cirno.avb;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-import xyz.cirno.avb.util.Logger;
-
 public class ChainPartitionDescriptor extends AvbDescriptor {
     public static final int DESCRIPTOR_SIZE = 92;
 
@@ -31,7 +29,6 @@ public class ChainPartitionDescriptor extends AvbDescriptor {
 
     static ChainPartitionDescriptor parseFromPayload(ByteBuffer buf) {
         if (buf.remaining() < DESCRIPTOR_SIZE - DESCRIPTOR_HEADER_SIZE) return null;
-        Logger.debug("ChainPartitionDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var h = new ChainPartitionDescriptor();
         h.rollbackIndexLocation = buf.getInt();
         int partitionLen = buf.getInt();
@@ -61,7 +58,6 @@ public class ChainPartitionDescriptor extends AvbDescriptor {
         int bodyLen = DESCRIPTOR_SIZE - DESCRIPTOR_HEADER_SIZE + partBytes.length + keyBytes.length;
         if (bodyLen % 8 != 0) bodyLen += 8 - (bodyLen % 8);
         int totalLen = 16 + bodyLen;
-        Logger.debug("ChainPartitionDescriptor: marshaling to %d bytes", totalLen);
 
         var buf = ByteBuffer.allocate(totalLen);
 

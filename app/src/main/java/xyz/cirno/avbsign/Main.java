@@ -1,31 +1,23 @@
 package xyz.cirno.avbsign;
 
-import android.system.Os;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.dataformat.toml.TomlMapper;
-
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.math.BigInteger;
-import java.nio.ByteBuffer;
-import java.security.KeyFactory;
-import java.security.spec.RSAPublicKeySpec;
-import java.util.Arrays;
+import java.nio.channels.FileChannel;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Objects;
 
-import xyz.cirno.avbsign.avb.AvbPublicKey;
-import xyz.cirno.avbsign.avb.VerifiedBootFooter;
+import xyz.cirno.avb.AvbKeyPair;
+import xyz.cirno.avb.PartitionProvider;
+import xyz.cirno.avb.rebuild.AvbRebuilder;
+import xyz.cirno.avb.util.IOUtils;
+import xyz.cirno.avb.util.Logger;
+import xyz.cirno.avb.verify.AvbVerifier;
 
 public class Main {
-
-    private static String bootSlotSuffix;
-    private static String avbroot;
-    private static File tempDir;
 
     private static int runCommand(String... args) {
         try {
@@ -63,6 +55,7 @@ public class Main {
             }
             return ms.toString();
         } catch (IOException e) {
+            e.printStackTrace();
             return null;
         }
     }
@@ -83,105 +76,91 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        var bootSlot = captureCommand("bootctl", "get-active-boot-slot");
-        if (bootSlot == null) {
-            throw new RuntimeException("Failed to get active boot slot");
+        try {
+            main2(args);
+        } catch (Throwable e) {
+            e.printStackTrace();
+            System.exit(1);
         }
-        bootSlot = bootSlot.trim();
-        bootSlotSuffix = captureCommand("bootctl", "get-suffix", bootSlot);
-        if (bootSlotSuffix == null) {
-            throw new RuntimeException("Failed to get boot slot suffix");
-        }
-        bootSlotSuffix = bootSlotSuffix.trim();
-
-        System.out.printf("Active boot slot: %s (suffix: %s)\n", bootSlot, bootSlotSuffix);
-
-        tempDir = new File("/data/local/tmp/avbsign-" + Os.getpid());
-        if (!tempDir.mkdirs()) {
-            throw new RuntimeException("Failed to create temporary directory " + tempDir.getAbsolutePath());
-        }
-
-        var moduleDir = args[0];
-        avbroot = moduleDir + "/tools/avbroot";
-
-        System.out.println(" - Inspecting vbmeta...");
-
-        var vbmetaToml = tempDir.getAbsolutePath() + "/avb.toml";
-        if (runCommand(avbroot, "avb", "unpack", "--quiet", "--input",
-                "/dev/block/by-name/vbmeta" + bootSlotSuffix, "--output", vbmetaToml) != 0) {
-            throw new RuntimeException("Failed to unpack vbmeta");
-        }
-
-        JsonNode root;
-        try (var is = new FileInputStream(vbmetaToml)) {
-            root = new TomlMapper().readTree(is);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to read vbmeta TOML: " + e.getMessage());
-        }
-
-        var avbPublicKeyString = Objects.requireNonNull(root.at("/header/public_key").textValue());
-        var avbPublicKey = AvbPublicKey.readFrom(ByteBuffer.wrap(hexStringToByteArray(avbPublicKeyString)));
-
-
-        // TODO: check if we have the corresponding private key
-
-        var descriptors = root.at("/header/descriptors");
-        if (descriptors == null || !descriptors.isArray() || descriptors.isEmpty()) {
-            throw new RuntimeException("No descriptors found in vbmeta");
-        }
-
-        for (int i = 0; i < descriptors.size(); i++) {
-            var descriptor = descriptors.get(i);
-            if (!(descriptor instanceof ObjectNode obj)) {
-                throw new RuntimeException("Malformed avb.toml");
-            }
-            var type = Objects.requireNonNull(obj.get("type").textValue());
-            switch (type) {
-                case "Property":
-                    System.out.printf(" - Property: %s=%s", descriptor.get("key").textValue(),
-                            descriptor.get("value").textValue());
-                    break;
-                case "Hash":
-                    processHashDescriptor(obj);
-                    break;
-                case "ChainPartition":
-                    processChainPartitionDescriptor(obj);
-                    break;
-                case "HashTree":
-                    System.out.printf(" - HashTree: partition_name=%s (SKIPPED)\n",
-                            descriptor.get("partition_name").textValue());
-            }
-        }
-
     }
 
-    private static void processHashDescriptor(ObjectNode descriptor) {
-        var partition = Objects.requireNonNull(descriptor.get("partition_name").textValue());
-        System.out.printf(" - Hash: partition_name=%s\n", partition);
-        var partitionPath = "/dev/block/by-name/" + partition + bootSlotSuffix;
-        try (var f = new RandomAccessFile(partitionPath, "r")) {
-            var imageSize = descriptor.get("image_size").asLong();
-            var footer = VerifiedBootFooter.readFrom(f.getChannel());
-            if (footer == null) {
-                throw new RuntimeException("no avb footer");
-            }
-            if (footer.originalImageSize != imageSize) {
-                System.out.printf("   + update image size in vbmeta: %d -> %d\n", imageSize, footer.originalImageSize);
-                descriptor.put("image_size", footer.originalImageSize);
-            }
+    public static void main2(String[] args) {
+        if (args.length < 2) {
+            System.out.println("Usage:");
+            System.out.println("  app_process -cp avbsign.apk / xyz.cirno.avbsign.Main check <partition_pattern>");
+            System.out.println("  app_process -cp avbsign.apk / xyz.cirno.avbsign.Main fix <partition_pattern> <keys_dir>");
+            System.out.println("    partition_pattern: pattern for partition images, use {} as placeholder for partition name");
+            System.out.println("                       e.g. `/dev/block/by-name/{}_a`, `{}.img`");
+            System.out.println("    keys_dir:          directory containing private keys in PEM format");
+            System.exit(1);
+        }
+        var command = args[0];
+        var pattern = args[1];
+        if ("check".equals(command)) {
+            check(pattern);
+        } else if ("fix".equals(command)) {
+            var keysdir = args[2];
+            fix(pattern, keysdir);
+        }
+    }
 
-            System.out.print("   + verifying image\n");
-
-            if (runCommand(avbroot, "avb", "verify", "--input", partitionPath) != 0) {
-                System.out.print("   + repacking image\n");
-                var newimg = new File(tempDir, partition + bootSlotSuffix + ".img");
-                var repackStatus = runCommand(avbroot, "avb", "repack", "--quiet",
-                        "--input", partitionPath,
-                        "--output", newimg.getCanonicalPath());
-                if (repackStatus != 0) {
-                    throw new RuntimeException("avbroot avb repack failed");
+    private static void fix(String pattern, String keysdir) {
+        try {
+            var keyPairs = new ArrayList<AvbKeyPair>();
+            try (var iter = Files.list(Paths.get(keysdir))) {
+                iter.forEach(f -> {
+                    var keypair = AvbKeyPair.fromPrivateKeyPem(f);
+                    if (keypair != null) {
+                        Logger.info("Loaded key with public key hash " + IOUtils.sha256ToHex(keypair.publicKey.toByteArray()));
+                        keyPairs.add(keypair);
+                    }
+                });
+            }
+            if (keyPairs.isEmpty()) {
+                Logger.error("No keys loaded from " + keysdir);
+                System.exit(1);
+            }
+            var verifier = newAvbVerifier(pattern);
+            var result = verifier.recursiveVerify("vbmeta");
+            if (result.hasIssues()) {
+                System.out.println("Verification failed with issues:");
+                for (var issue : result.issues) {
+                    System.out.println("Issue: " + issue);
                 }
-                // flashPartition(partitionPath, newimg.getCanonicalPath());
+                var rebuilder = new AvbRebuilder(result);
+                for (var keypair : keyPairs) {
+                    rebuilder.addKeyPair(keypair);
+                }
+                var parts = rebuilder.rebuildWithTrustedData();
+                for (var part : parts) {
+                    Logger.info("Rebuilding partition " + part.partitionName());
+                    try (var f = FileChannel.open(Paths.get(pattern.replace("{}", part.partitionName())), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+                        part.rebuildInplace(f);
+                    } catch (Exception e) {
+                        Logger.error("Failed to write rebuilt partition " + part.partitionName(), e);
+                        e.printStackTrace();
+                    }
+                }
+
+            } else {
+                System.out.println("Verification succeeded with no issues.");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static void check(String pattern) {
+        var verifier = newAvbVerifier(pattern);
+        try {
+            var result = verifier.recursiveVerify("vbmeta");
+            if (result.hasIssues()) {
+                System.out.println("Verification failed with issues:");
+                for (var issue : result.issues) {
+                    System.out.println("Issue: " + issue);
+                }
+            } else {
+                System.out.println("Verification succeeded with no issues.");
             }
 
         } catch (IOException e) {
@@ -189,8 +168,19 @@ public class Main {
         }
     }
 
-    private static void processChainPartitionDescriptor(ObjectNode descriptor) {
+    private static AvbVerifier newAvbVerifier(String pattern) {
+        var prov = new PartitionProvider() {
+            @Override
+            public SeekableByteChannel openPartition(String name) {
+                try {
+                    var path = Paths.get(pattern.replace("{}", name));
+                    return FileChannel.open(path, StandardOpenOption.READ);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        };
+        var verifier = new AvbVerifier(prov);
+        return verifier;
     }
-
-
 }

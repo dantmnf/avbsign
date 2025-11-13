@@ -50,4 +50,9 @@ public abstract class AvbDescriptor {
             return new UnparsedAvbDescriptor(tag, payload);
         }
     }
+
+    @Override
+    public AvbDescriptor clone() {
+        return parseFrom(ByteBuffer.wrap(toByteArray()));
+    }
 }

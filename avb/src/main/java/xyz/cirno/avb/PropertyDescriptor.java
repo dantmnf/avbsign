@@ -3,8 +3,6 @@ package xyz.cirno.avb;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
-import xyz.cirno.avb.util.Logger;
-
 public class PropertyDescriptor extends AvbDescriptor {
     public String name;
     public String value;
@@ -16,19 +14,18 @@ public class PropertyDescriptor extends AvbDescriptor {
     }
 
     static PropertyDescriptor parseFromPayload(ByteBuffer buf) {
-        Logger.debug("PropertyDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var keyLen = buf.getLong();
         InvalidAvbDataException.checkUnsignedOverflow(keyLen);
         var valueLen = buf.getLong();
         InvalidAvbDataException.checkUnsignedOverflow(valueLen);
         var keyBytes = new byte[(int) keyLen];
         buf.get(keyBytes);
-        if(buf.get() != 0){
+        if (buf.get() != 0) {
             throw new InvalidAvbDataException("string without nul terminator in PropertyDescriptor");
         }
         var valueBytes = new byte[(int) valueLen];
         buf.get(valueBytes);
-        if(buf.get() != 0){
+        if (buf.get() != 0) {
             throw new InvalidAvbDataException("string without nul terminator in PropertyDescriptor");
         }
         var name = new String(keyBytes, StandardCharsets.UTF_8);
@@ -44,7 +41,6 @@ public class PropertyDescriptor extends AvbDescriptor {
         if (len % 8 != 0) {
             len += 8 - (len % 8);
         }
-        Logger.debug("%s: marshaling to %d bytes", getClass(), len);
         var buf = ByteBuffer.allocate(len);
         buf.putLong(tag);
         buf.putLong(len - 16);

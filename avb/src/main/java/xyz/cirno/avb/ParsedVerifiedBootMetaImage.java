@@ -9,10 +9,10 @@ import java.util.List;
 import xyz.cirno.avb.util.IOUtils;
 
 public class ParsedVerifiedBootMetaImage extends VerifiedBootMetaImage {
-    public final AvbPublicKey publicKey;
-    public final byte[] digest;
-    public final byte[] signature;
-    public final boolean signatureValid;
+    public AvbPublicKey publicKey;
+    public byte[] digest;
+    public byte[] signature;
+    public boolean signatureValid;
 
     public ParsedVerifiedBootMetaImage(VerifiedBootHeader header, AvbPublicKey publicKey, List<AvbDescriptor> descriptors, byte[] digest, byte[] signature, boolean sigValid) {
         super();
@@ -40,5 +40,16 @@ public class ParsedVerifiedBootMetaImage extends VerifiedBootMetaImage {
         }
         ch.position(footer.vbmetaOffset);
         return parseFrom(Channels.newInputStream(ch));
+    }
+
+    @Override
+    public ParsedVerifiedBootMetaImage clone() {
+        return new ParsedVerifiedBootMetaImage(
+                header.clone(),
+                publicKey,
+                descriptors.stream().map(AvbDescriptor::clone).toList(),
+                digest == null ? null : digest.clone(),
+                signature == null ? null : signature.clone(),
+                signatureValid);
     }
 }

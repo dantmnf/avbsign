@@ -4,8 +4,6 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
-import xyz.cirno.avb.util.Logger;
-
 public class HashDescriptor extends AvbDescriptor {
     public static final int DESCRIPTOR_SIZE = 132;
     // Do not apply the default A/B partition logic to this partition.
@@ -38,7 +36,6 @@ public class HashDescriptor extends AvbDescriptor {
         if (buf.remaining() < FIXED_SIZE) {
             return null;
         }
-        Logger.debug("HashDescriptor: read from %d bytes", buf.remaining() + DESCRIPTOR_HEADER_SIZE);
         var h = new HashDescriptor();
 
         h.imageSize = buf.getLong();
@@ -89,7 +86,6 @@ public class HashDescriptor extends AvbDescriptor {
         int bodyLen = FIXED_SIZE + partBytes.length + saltBytes.length + digestBytes.length;
         if (bodyLen % 8 != 0) bodyLen += 8 - (bodyLen % 8);
         int totalLen = 16 + bodyLen;
-        Logger.debug("%s: marshaling to %d bytes", getClass(), totalLen);
 
         var buf = ByteBuffer.allocate(totalLen);
         buf.putLong(tag);

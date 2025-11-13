@@ -2,21 +2,17 @@ package xyz.cirno.avbsign;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Random;
 
 public class AndroidBootImage {
     private RandomAccessFile f;
 
     private static final byte[] ANDROID_BOOT_MAGIC = {
-        0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21 // "ANDROID!"
+            0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21 // "ANDROID!"
     };
 
     private static final byte[] VENDOR_BOOT_MAGIC = {
-        // "VNDRBOOT"
-        0x56, 0x4E, 0x44, 0x52, 0x42, 0x4F, 0x4F, 0x54
+            // "VNDRBOOT"
+            0x56, 0x4E, 0x44, 0x52, 0x42, 0x4F, 0x4F, 0x54
     };
 
 
@@ -50,12 +46,12 @@ public class AndroidBootImage {
 
     private static long toUIntLE(int x) {
         var rev = Integer.reverseBytes(x);
-        return ((long)rev) & 0x0FFFFFFFFL;
+        return ((long) rev) & 0x0FFFFFFFFL;
     }
 
     private static long readUIntLE(RandomAccessFile f) throws IOException {
         var rev = Integer.reverseBytes(f.readInt());
-        return ((long)rev) & 0x0FFFFFFFFL;
+        return ((long) rev) & 0x0FFFFFFFFL;
     }
 
     private static long roundToPage(long size, long pageSize) {
@@ -141,7 +137,8 @@ public class AndroidBootImage {
                             + roundToPage(bootConfigSize, pageSize);
                 }
             }
-        } catch (IOException ignore) {}
+        } catch (IOException ignore) {
+        }
         return -1;
     }
 }

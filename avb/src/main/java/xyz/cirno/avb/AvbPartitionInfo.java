@@ -1,9 +1,7 @@
 package xyz.cirno.avb;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
 
 import xyz.cirno.avb.util.IOUtils;
@@ -31,13 +29,14 @@ public class AvbPartitionInfo {
     }
 
     /**
-     * @param ch the partition as {@link FileChannel}, will not change the position
+     * @param ch the partition as {@link SeekableByteChannel}, will not change the position
      * @return {@link AvbPartitionInfo} if the partition is AVB-protected, otherwise null
-     * @throws java.io.IOException from {@link FileChannel}
+     * @throws java.io.IOException from {@link SeekableByteChannel}
      */
-    public static AvbPartitionInfo ofPartition(FileChannel ch) throws IOException {
+    public static AvbPartitionInfo ofPartition(SeekableByteChannel ch) throws IOException {
         var magicBuf = ByteBuffer.allocate(4);
-        IOUtils.readFullyAt(ch, magicBuf, 0);
+        ch.position(0);
+        IOUtils.readFully(ch, magicBuf);
         magicBuf.flip();
         var magic = magicBuf.getInt();
         if (magic == VerifiedBootHeader.AVB_MAGIC) {
@@ -51,7 +50,8 @@ public class AvbPartitionInfo {
         }
         var offset = len - VerifiedBootFooter.FOOTER_SIZE;
         var footerBuf = ByteBuffer.allocate(VerifiedBootFooter.FOOTER_SIZE);
-        IOUtils.readFullyAt(ch, footerBuf, offset);
+        ch.position(offset);
+        IOUtils.readFully(ch, footerBuf);
         footerBuf.flip();
         var footer = VerifiedBootFooter.parseFrom(footerBuf);
         if (footer == null) {
