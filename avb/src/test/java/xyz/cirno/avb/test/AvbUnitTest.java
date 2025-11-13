@@ -1,12 +1,11 @@
 package xyz.cirno.avb.test;
 
-import org.junit.Assert;
-import org.junit.Test;
-
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.openssl.PEMKeyPair;
 import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
+import org.junit.Assert;
+import org.junit.Test;
 
 import java.io.FileReader;
 import java.nio.ByteBuffer;
@@ -16,7 +15,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.security.PrivateKey;
-import java.security.interfaces.RSAPrivateCrtKey;
 import java.util.Arrays;
 
 import xyz.cirno.avb.AvbKeyPair;
@@ -75,7 +73,7 @@ public class AvbUnitTest {
 
     public static PrivateKey readPrivateKey(String pemFilePath) throws Exception {
         try (FileReader keyReader = new FileReader(pemFilePath);
-            var pemParser = new PEMParser(keyReader)) {
+             var pemParser = new PEMParser(keyReader)) {
             var object = pemParser.readObject();
             var converter = new JcaPEMKeyConverter();
             if (object instanceof PEMKeyPair) {

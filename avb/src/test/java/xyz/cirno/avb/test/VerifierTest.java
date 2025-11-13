@@ -1,8 +1,9 @@
 package xyz.cirno.avb.test;
 
+import org.junit.Assert;
+import org.junit.Test;
+
 import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -12,17 +13,12 @@ import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.interfaces.RSAPrivateCrtKey;
-import java.util.HashMap;
 import java.util.HexFormat;
-
-import org.junit.Assert;
-import org.junit.Test;
 
 import xyz.cirno.avb.AvbKeyPair;
 import xyz.cirno.avb.AvbPublicKey;
 import xyz.cirno.avb.PartitionProvider;
 import xyz.cirno.avb.rebuild.AvbRebuilder;
-import xyz.cirno.avb.util.IOUtils;
 import xyz.cirno.avb.verify.AvbVerifier;
 
 public class VerifierTest {
@@ -139,7 +135,7 @@ public class VerifierTest {
                 String imgDir = System.getProperty("test.imagesDir", "../images");
                 p = Path.of(imgDir, name + "_patched.img");
                 if (!Files.exists(p)) {
-                    p = Path.of(imgDir,name + ".img");
+                    p = Path.of(imgDir, name + ".img");
                 }
                 return FileChannel.open(p, java.nio.file.StandardOpenOption.READ);
             } catch (Throwable t) {
