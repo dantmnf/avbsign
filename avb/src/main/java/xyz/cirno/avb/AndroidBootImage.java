@@ -1,4 +1,4 @@
-package xyz.cirno.avbsign;
+package xyz.cirno.avb;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;

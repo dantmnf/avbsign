@@ -115,10 +115,10 @@ public class AvbRebuilder {
     private void fixInvalidSignature(VerificationIssue.InvalidSignature is) throws IOException {
         var vbmetaPartition = is.vbmetaPartition();
         var header = getVbmetaImage(vbmetaPartition);
-        Logger.info("Fixing invalid signature for partition " + is.vbmetaPartition() + "with public key " + header.publicKey);
         var privKey = tryGetKeyPairFor(header.publicKey);
         // have private key for current partition
         if (privKey != null) {
+            Logger.info("Signing partition " + is.vbmetaPartition() + " with matching private key for " + header.publicKey);
             markVbmetaDirty(vbmetaPartition, privKey);
             return;
         }
@@ -144,8 +144,8 @@ public class AvbRebuilder {
             var newKeyPair = getGeneratedKeyPair(cpd.publicKey.keySizeBits);
             header.publicKey = newKeyPair.publicKey;
             markVbmetaDirty(vbmetaPartition, newKeyPair);
-            Logger.info("Replaced public key in vbmeta partition %s to %s",
-                    vbmetaPartition, IOUtils.sha256ToHex(newKeyPair.publicKey.toByteArray()));
+            Logger.info("Using new key pair to sign partition %s (publicKey=%s)",
+                    vbmetaPartition, newKeyPair.publicKey);
             addIssue(new VerificationIssue.PublicKeyMismatch(ref.referencedInVbmetaPartition(), ref.descriptorIndex(), newKeyPair.publicKey));
         }
     }
@@ -185,8 +185,8 @@ public class AvbRebuilder {
         if (!(descriptor instanceof ChainPartitionDescriptor cpd)) {
             throw new IllegalArgumentException("Descriptor is not ChainPartitionDescriptor");
         }
-        Logger.info("Fixing public key mismatch in chain partition descriptor %s:%d -> %s", pkm.vbmetaPartition(), pkm.descriptorIndex(), cpd.partitionName);
         var newPublicKey = pkm.actualPublicKey();
+        Logger.info("Setting %s.descriptors[%d].publicKey=%s", pkm.vbmetaPartition(), pkm.descriptorIndex(), newPublicKey);
         cpd.publicKey = newPublicKey;
         markVbmetaDirty(pkm.vbmetaPartition(), null);
     }
@@ -199,7 +199,7 @@ public class AvbRebuilder {
         if (!(descriptor instanceof HashDescriptor hd)) {
             throw new IllegalArgumentException("Descriptor is not HashDescriptor");
         }
-        Logger.info("Fixing hash mismatch in hash descriptor %s:%d", hm.vbmetaPartition(), hm.descriptorIndex());
+        Logger.info("Setting %s.descriptors[%d].digest=%s", hm.vbmetaPartition(), hm.descriptorIndex(), IOUtils.bytesToHex(hm.actualHash()));
         hd.digest = hm.actualHash();
         hd.imageSize = hm.actualSize();
         markVbmetaDirty(vbmetaPartition, null);

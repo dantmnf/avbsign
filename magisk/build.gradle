@@ -12,7 +12,7 @@ tasks.register('packageMagisk', Zip) {
     from(dexPackage.outputs.files) {
         include '**/*.apk'
         into("/")
-        rename { String fileName -> 'avbsign.apk' }
+//        rename { String fileName -> 'avbsign.apk' }
     }
 
     from(new File(rootProject.projectDir, 'keys')) {
@@ -20,7 +20,7 @@ tasks.register('packageMagisk', Zip) {
         into('keys')
     }
 
-    archiveFileName = 'avbsign.zip'
+    archiveFileName = 'avbsign-magisk.zip'
     destinationDirectory = file("$rootDir/build")
 
     doFirst {
