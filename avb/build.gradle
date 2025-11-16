@@ -3,8 +3,8 @@ plugins {
 }
 
 java {
-    sourceCompatibility JavaVersion.VERSION_17
-    targetCompatibility JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 dependencies {
@@ -13,7 +13,6 @@ dependencies {
 //    implementation libs.bcprov.lts8on
 
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.apache.commons:commons-compress:1.28.0'
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.8.2")
 }
 
@@ -21,7 +20,7 @@ test {
     useJUnitPlatform()
     testLogging {
         events "passed", "skipped", "failed"
-        exceptionFormat "short"
+        exceptionFormat = "short"
         showStandardStreams = true
     }
     systemProperty "test.imagesDir", new File(rootProject.projectDir, "images").absolutePath

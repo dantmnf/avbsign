@@ -25,6 +25,3 @@
 -keep class xyz.cirno.avbsign.Main {
     public static main(java.lang.String[]);
 }
-
--keep,allowshrinking,allowoptimization,allowobfuscation class org.bouncycastle.crypto.NativeLibIdentity { private static native getLibIdent(); }
-#-whyareyoukeeping class org.bouncycastle.crypto.NativeLibIdentity { public static getLibIdent(); }

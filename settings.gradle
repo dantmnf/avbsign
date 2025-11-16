@@ -20,6 +20,8 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "avbsign"
-include ':app'
+include ':dex'
 include ':avb'
-include ':module'
+include ':magisk'
+include ':entry'
+include ':jar'

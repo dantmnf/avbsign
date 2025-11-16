@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace 'xyz.cirno.avbsign'
+    namespace = 'xyz.cirno.avbsign'
     compileSdk 36
 
     defaultConfig {
@@ -21,9 +21,9 @@ android {
         }
     }
     compileOptions {
-        coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     packagingOptions {
@@ -39,5 +39,6 @@ android {
 dependencies {
     compileOnly libs.annotations
     implementation project(':avb')
+    implementation project(':entry')
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }

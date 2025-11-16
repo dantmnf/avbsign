@@ -1,5 +1,4 @@
 tasks.register('packageMagisk', Zip) {
-    dependsOn(":app:packageRelease")
     from('content/') {
         include '**/*'
         eachFile { details ->
@@ -8,7 +7,10 @@ tasks.register('packageMagisk', Zip) {
             }
         }
     }
-    from(tasks.getByPath(":app:packageRelease").outputs.files.asFileTree.filter { it.name.endsWith(".apk") }) {
+
+    def dexPackage = project(':dex').tasks.named('packageRelease').get()
+    from(dexPackage.outputs.files) {
+        include '**/*.apk'
         into("/")
         rename { String fileName -> 'avbsign.apk' }
     }
