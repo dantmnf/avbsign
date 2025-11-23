@@ -44,4 +44,11 @@ fi
 
 echo "Next boot slot: $boot_slot_suffix"
 
-app_process -cp "$MODDIR/avbsign-release.apk" / xyz.cirno.avbsign.Main fix "/dev/block/by-name/{}$boot_slot_suffix" "$MODDIR/keys"
+echo "Setting partitions writable"
+
+for part in /dev/block/by-name/*"${boot_slot_suffix}"
+do
+  blockdev --setrw "$part"
+done
+
+app_process -cp "$MODDIR/avbsign-release.apk" / xyz.cirno.avbsign.Main fix "/dev/block/by-name/{}$boot_slot_suffix" "$MODDIR/keys" 2>&1
