@@ -1,8 +1,8 @@
 [versions]
-agp = "8.13.0"
-bouncycastle = "2.73.9"
+agp = "9.2.1"
+bouncycastle = "2.73.11"
 jacksonDataformatToml = "2.20.1"
-annotations = "26.0.2-1"
+annotations = "26.1.0"
 
 [libraries]
 bcpkix-lts8on = { module = "org.bouncycastle:bcpkix-lts8on", version.ref = "bouncycastle" }

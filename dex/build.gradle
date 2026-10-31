@@ -34,15 +34,18 @@ android {
         }
     }
 
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
-            outputFileName = "avbsign-${variant.buildType.name}.apk"
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.each { output ->
+            output.outputFileName.set("avbsign-${variant.name}.apk")
         }
     }
 }
 
 dependencies {
-    compileOnly libs.annotations
+    // compileOnly libs.annotations
     implementation project(':avb')
     implementation project(':entry')
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'

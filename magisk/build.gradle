@@ -2,8 +2,10 @@ tasks.register('packageMagisk', Zip) {
     from('content/') {
         include '**/*'
         eachFile { details ->
-            if (details.path.startsWith('tools/bootctl_')) {
-                details.mode = 0755
+            if (details.path.startsWith('tools/bootctl_') || details.path.endsWith('.sh')) {
+                details.permissions {
+                    unix('0755')
+                }
             }
         }
     }
@@ -11,8 +13,8 @@ tasks.register('packageMagisk', Zip) {
     def dexPackage = project(':dex').tasks.named('packageRelease').get()
     from(dexPackage.outputs.files) {
         include '**/*.apk'
+        includeEmptyDirs = false
         into("/")
-//        rename { String fileName -> 'avbsign.apk' }
     }
 
     from(new File(rootProject.projectDir, 'keys')) {

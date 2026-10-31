@@ -12,6 +12,8 @@ application {
 }
 
 jar {
+    dependsOn(':avb:jar')
+    dependsOn(':entry:jar')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes 'Main-Class': 'xyz.cirno.avbsign.Main'

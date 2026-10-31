@@ -1,5 +1,20 @@
 #!/bin/busybox ash
 
+if ! [ "$(command -v awk)" = "awk" ]
+then
+  if ! command -v busybox >/dev/null 2>&1
+  then
+    PATH="/data/adb/magisk:/data/adb/ksu/bin:/data/adb/ap/bin"
+  fi
+
+  if ! command -v busybox >/dev/null 2>&1
+  then
+    echo "no busybox found"
+    exit 1
+  fi
+  ASH_STANDALONE=1 exec busybox sh "$0" "$@"
+fi
+
 clean_result_parcel() { # stdin=service command output
   awk '/Result: Parcel\(/ {
       if(substr($0,16,1)=="E") {print; exit 1}

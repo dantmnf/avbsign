@@ -59,7 +59,7 @@ public class AvbRebuilder {
         return false;
     }
 
-    private ParsedVerifiedBootMetaImage getVbmetaImage(String partitionName) throws IOException {
+    private ParsedVerifiedBootMetaImage getVbmetaImage(String partitionName) {
         if (partitionRecords.containsKey(partitionName)) {
             return partitionRecords.get(partitionName).vbmetaImage();
         }
@@ -203,5 +203,14 @@ public class AvbRebuilder {
         hd.digest = hm.actualHash();
         hd.imageSize = hm.actualSize();
         markVbmetaDirty(vbmetaPartition, null);
+    }
+
+    public void setRootKey(AvbKeyPair keypair) {
+        addKeyPair(keypair);
+        markVbmetaDirty("vbmeta", keypair);
+    }
+
+    public void setPropertyOverride(String name, String value) {
+
     }
 }
