@@ -20,8 +20,22 @@ public class Logger {
         };
     }
 
+    public interface LogListener {
+        void onLog(int level, String msg);
+    }
+
+    private static volatile LogListener listener;
+
+    public static void setListener(LogListener l) {
+        listener = l;
+    }
+
     public static void log(int level, String msg) {
         System.out.println("[" + levelToString(level) + "] " + msg);
+        var l = listener;
+        if (l != null) {
+            l.onLog(level, msg);
+        }
     }
 
     public static void log(int level, String format, Object... args) {

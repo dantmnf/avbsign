@@ -25,3 +25,9 @@
 -keep class xyz.cirno.avbsign.Main {
     public static main(java.lang.String[]);
 }
+
+-assumenosideeffects class org.bouncycastle.crypto.NativeLoader { void loadDriver(); }
+
+-keep class xyz.cirno.avbsign.AvbService { *; }
+-keep class xyz.cirno.avbsign.IAvbService$* { *; }
+-keep class xyz.cirno.avbsign.IAvbLogCallback$* { *; }

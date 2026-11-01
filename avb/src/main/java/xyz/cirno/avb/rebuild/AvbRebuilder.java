@@ -207,6 +207,10 @@ public class AvbRebuilder {
 
     public void setRootKey(AvbKeyPair keypair) {
         addKeyPair(keypair);
+        var record = partitionRecords.get("vbmeta");
+        if (record != null && record.vbmetaImage() != null) {
+            record.vbmetaImage().publicKey = keypair.publicKey;
+        }
         markVbmetaDirty("vbmeta", keypair);
     }
 
