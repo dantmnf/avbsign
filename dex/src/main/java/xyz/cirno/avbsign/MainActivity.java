@@ -2,6 +2,8 @@ package xyz.cirno.avbsign;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.SystemProperties;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -27,6 +29,8 @@ public class MainActivity extends BaseAvbActivity {
     private int keyCount = -1;
     private int imageCount = -1;
     private final List<String> keyNames = new ArrayList<>();
+    private TextView nextSlotView;
+    private TextView currentSlotView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,6 +45,10 @@ public class MainActivity extends BaseAvbActivity {
         rootKeySpinner = findViewById(R.id.root_key_spinner);
         backupCheck = findViewById(R.id.backup_check);
         logView = findViewById(R.id.log_view);
+        currentSlotView = findViewById(R.id.currentSlotView);
+        nextSlotView = findViewById(R.id.nextSlotView);
+
+        currentSlotView.setText(SystemProperties.get("ro.boot.slot_suffix", ""));
 
         findViewById(R.id.request_permission_button).setOnClickListener(v -> requestShizukuPermission());
         findViewById(R.id.manage_keys_button).setOnClickListener(v -> startActivity(new Intent(this, ManageFilesActivity.class)
@@ -81,8 +89,10 @@ public class MainActivity extends BaseAvbActivity {
             if (uid != 0) {
                 log("警告：服务未以 root 运行（uid=" + uid + "），无法读写块设备。请使用由 root 启动的 Shizuku。");
             }
+            var nextSlot = service.getSlotSuffix();
+            nextSlotView.setText(nextSlot);
             if (patternInput.getText().toString().isEmpty()) {
-                patternInput.setText("/dev/block/by-name/{}" + service.getSlotSuffix());
+                patternInput.setText("/dev/block/by-name/{}" + nextSlot);
             }
         } catch (Exception e) {
             log("服务初始化失败：" + e);

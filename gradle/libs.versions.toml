@@ -5,6 +5,7 @@ bouncycastle = "2.73.11"
 jacksonDataformatToml = "2.20.1"
 annotations = "26.1.0"
 cardview = "1.0.0"
+material = "1.14.0"
 
 [libraries]
 shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku-api" }
@@ -14,6 +15,7 @@ bcprov-lts8on = { module = "org.bouncycastle:bcprov-lts8on", version.ref = "boun
 jackson-dataformat-toml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-toml", version.ref = "jacksonDataformatToml" }
 annotations = { group = "org.jetbrains", name = "annotations", version.ref = "annotations" }
 cardview = { group = "androidx.cardview", name = "cardview", version.ref = "cardview" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -50,6 +50,7 @@ androidComponents {
 
 dependencies {
     implementation libs.cardview
+    implementation libs.material
 
     // compileOnly libs.annotations
     compileOnly project(':hidden-api')

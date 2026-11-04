@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="replace_bootloader_choices">
+        <item>从当前启动槽位替换</item>
+        <item>从外部文件替换</item>
+    </string-array>
+</resources>

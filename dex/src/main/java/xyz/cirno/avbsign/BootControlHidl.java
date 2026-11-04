@@ -31,8 +31,7 @@ public class BootControlHidl {
             remote.transact(8, request, reply, 0);
             reply.verifySuccess();
             request.releaseTemporaryStorage();
-            var result = reply.readString();
-            return result;
+            return reply.readString();
         } finally {
             reply.release();
         }
@@ -46,8 +45,7 @@ public class BootControlHidl {
             remote.transact(11, request, reply, 0);
             reply.verifySuccess();
             request.releaseTemporaryStorage();
-            var result = reply.readInt32();
-            return result;
+            return reply.readInt32();
         } finally {
             reply.release();
         }

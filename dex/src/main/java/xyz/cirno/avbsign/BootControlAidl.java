@@ -6,8 +6,7 @@ import android.os.RemoteException;
 import android.os.ServiceManager;
 
 /**
- * Minimal client for the android.hardware.boot.IBootControl AIDL HAL,
- * equivalent to the transactions performed by magisk/content/tools/bootctl-aidl.sh.
+ * Minimal client for the android.hardware.boot.IBootControl AIDL HAL
  */
 public class BootControlAidl {
     public static final String kServiceName = "android.hardware.boot.IBootControl/default";
