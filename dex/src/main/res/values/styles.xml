@@ -3,4 +3,12 @@
     <style name="AppTheme" parent="android:Theme.Material">
         <item name="android:colorAccent">#00696B</item>
     </style>
+    <style name="BootloaderSettingsTheme" parent="Theme.Material3Expressive.DynamicColors.Dark">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="listItemCardViewSegmentedStyle">@style/Widget.AvbSign.ListItem.Segmented</item>
+    </style>
+    <style name="Widget.AvbSign.ListItem.Segmented" parent="Widget.Material3.ListItemCardView.Segmented">
+        <item name="cardBackgroundColor">@color/segmented_list_item_background</item>
+    </style>
 </resources>

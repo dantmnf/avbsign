@@ -1,23 +1,26 @@
 package xyz.cirno.avbsign;
 
 import android.content.Intent;
-import android.database.Cursor;
-import android.net.Uri;
 import android.os.Bundle;
-import android.provider.OpenableColumns;
-import android.text.method.ScrollingMovementMethod;
-import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
+import androidx.annotation.NonNull;
+import androidx.activity.OnBackPressedCallback;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.listitem.ListItemCardView;
+import com.google.android.material.listitem.ListItemLayout;
+import com.google.android.material.listitem.ListItemViewHolder;
+
 import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Import and delete managed files (signing keys or bootloader images) stored
@@ -34,54 +37,89 @@ public class ManageFilesActivity extends BaseAvbActivity {
 
     private String dir;
     private String fixedName;
-    private LinearLayout fileList;
     private TextView statusView;
+    private final FileAdapter fileAdapter = new FileAdapter();
+    private final EditSelection selection = new EditSelection();
+    private boolean filesLoaded;
+    private boolean fileOperationInProgress;
+    private int refreshGeneration;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         dir = getIntent().getStringExtra(EXTRA_DIR);
         fixedName = getIntent().getStringExtra(EXTRA_FIXED_NAME);
+        if (savedInstanceState != null) {
+            selection.restore(savedInstanceState.getBoolean("editing"),
+                    savedInstanceState.getStringArrayList("selected_items"));
+        }
         var title = getIntent().getStringExtra(EXTRA_TITLE);
-        setTitle(title);
-        var actionBar = getActionBar();
+        setContentView(R.layout.activity_manage_files);
+        applySystemBarInsets(findViewById(R.id.files_root));
+        MaterialToolbar toolbar = findViewById(R.id.files_toolbar);
+        setSupportActionBar(toolbar);
+        var actionBar = getSupportActionBar();
         if (actionBar != null) {
             actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setTitle(title);
         }
 
-        int pad = dp(16);
-        var root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(pad, pad, pad, pad);
-
-        var pathView = new TextView(this);
+        TextView pathView = findViewById(R.id.files_path);
         pathView.setText("存放位置：" + dir);
-        pathView.setTextSize(12);
-        root.addView(pathView, lp());
-
-        statusView = new TextView(this);
-        root.addView(statusView, lp());
-
-        var importButton = new Button(this);
-        importButton.setText(fixedName != null ? "导入并保存为 " + fixedName : "导入文件（可多选）");
-        importButton.setOnClickListener(v -> startImport());
-        root.addView(importButton, lp());
-
-        var scroll = new ScrollView(this);
-        fileList = new LinearLayout(this);
-        fileList.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(fileList);
-        root.addView(scroll, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
-
-        setContentView(root);
-        applySystemBarInsets(root);
+        statusView = findViewById(R.id.files_status);
+        RecyclerView fileList = findViewById(R.id.files_list);
+        fileList.setLayoutManager(new LinearLayoutManager(this));
+        fileList.setAdapter(fileAdapter);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (selection.isEditing()) {
+                    if (fileOperationInProgress) {
+                        toast("请等待文件操作完成");
+                    } else {
+                        selection.exit();
+                        fileAdapter.notifyDataSetChanged();
+                        invalidateOptionsMenu();
+                    }
+                } else {
+                    finish();
+                }
+            }
+        });
         onShizukuAvailable();
     }
 
     @Override
-    public boolean onOptionsItemSelected(android.view.MenuItem item) {
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.bootloader_settings, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        var action = menu.findItem(R.id.action_edit);
+        if (action != null) {
+            action.setTitle(selection.isEditing() ? "删除" : "编辑");
+            action.setEnabled(!fileOperationInProgress
+                    && (!selection.isEditing() || (filesLoaded && !selection.isEmpty())));
+        }
+        return super.onPrepareOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
-            finish();
+            getOnBackPressedDispatcher().onBackPressed();
+            return true;
+        }
+        if (item.getItemId() == R.id.action_edit) {
+            if (selection.isEditing()) {
+                confirmDeleteSelection();
+            } else if (!fileOperationInProgress) {
+                selection.enter();
+                fileAdapter.notifyDataSetChanged();
+                invalidateOptionsMenu();
+            }
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -95,10 +133,15 @@ public class ManageFilesActivity extends BaseAvbActivity {
 
     @Override
     protected void onShizukuStateChanged() {
-        if (!isShizukuGranted()) {
-            statusView.setText(rikka.shizuku.Shizuku.pingBinder() ? "Shizuku 正在运行，但尚未授权" : "Shizuku 未运行");
-        } else {
-            statusView.setText("");
+        if (statusView != null && service == null) {
+            refreshGeneration++;
+            filesLoaded = false;
+            fileAdapter.names.clear();
+            fileAdapter.notifyDataSetChanged();
+            invalidateOptionsMenu();
+            showStatus(!isShizukuGranted()
+                    ? (rikka.shizuku.Shizuku.pingBinder() ? "Shizuku 正在运行，但尚未授权" : "Shizuku 未运行")
+                    : "正在连接服务");
         }
     }
 
@@ -108,66 +151,177 @@ public class ManageFilesActivity extends BaseAvbActivity {
     }
 
     private void startImport() {
+        if (selection.isEditing() || fileOperationInProgress) {
+            return;
+        }
         if (!isShizukuGranted()) {
             requestShizukuPermission();
             return;
         }
-        var intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        startActivityForResult(intent, REQUEST_CODE_IMPORT);
+        if (service == null) {
+            toast("服务尚未连接，请稍后再试");
+            return;
+        }
+        startActivityForResult(ManagedFileImporter.createIntent(), REQUEST_CODE_IMPORT);
     }
 
     private void refreshList() {
-        var svc = service;
-        if (svc == null) {
+        if (service == null || statusView == null || fileOperationInProgress) {
             return;
         }
-        runWithService(svc2 -> svc2.listFiles(dir), (names, error) -> {
+        var generation = ++refreshGeneration;
+        filesLoaded = false;
+        fileAdapter.notifyDataSetChanged();
+        invalidateOptionsMenu();
+        showStatus("正在读取文件");
+        boolean started = runWithService(svc2 -> svc2.listFiles(dir), (names, error) -> {
+            if (generation != refreshGeneration || isFinishing() || isDestroyed()) {
+                return;
+            }
             if (error != null) {
-                statusView.setText("读取失败：" + error.getMessage());
+                showStatus("读取失败：" + error.getMessage());
                 return;
             }
-            fileList.removeAllViews();
-            if (names.length == 0) {
-                var empty = new TextView(this);
-                empty.setText("（暂无文件）");
-                fileList.addView(empty, lp());
-                return;
-            }
+            fileAdapter.names.clear();
             for (var name : names) {
-                if (fixedName != null && !fixedName.equals(name)) {
-                    continue;
+                if (fixedName == null || fixedName.equals(name)) {
+                    fileAdapter.names.add(name);
                 }
-                fileList.addView(fileRow(name), lp());
             }
+            selection.retainAll(fileAdapter.names);
+            filesLoaded = true;
+            showStatus("");
+            fileAdapter.notifyDataSetChanged();
+            invalidateOptionsMenu();
         });
+        if (!started) {
+            showStatus("服务不可用，请稍后再试");
+        }
     }
 
-    private View fileRow(String name) {
-        var row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
+    private void showStatus(String message) {
+        statusView.setText(message);
+        statusView.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
+    }
 
-        var label = new TextView(this);
-        label.setText(name);
-        label.setTextSize(14);
-        row.addView(label, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+    private void confirmDeleteSelection() {
+        if (!selection.isEditing() || selection.isEmpty() || !filesLoaded || fileOperationInProgress) {
+            return;
+        }
+        var names = selection.snapshot();
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("删除文件")
+                .setMessage("删除所选文件？文件将立即删除。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("删除", (dialog, which) -> deleteManagedFiles(names))
+                .show();
+    }
 
-        var delete = new Button(this);
-        delete.setText("删除");
-        delete.setOnClickListener(v -> runWithService(svc -> {
-            svc.deleteFile(dir, name);
-            return null;
-        }, (r, error) -> {
-            if (error != null) {
-                toast("删除失败：" + error.getMessage());
+    private void setFileOperationInProgress(boolean inProgress) {
+        if (inProgress) {
+            refreshGeneration++;
+        }
+        fileOperationInProgress = inProgress;
+        fileAdapter.notifyDataSetChanged();
+        invalidateOptionsMenu();
+    }
+
+    private void deleteManagedFiles(ArrayList<String> names) {
+        setFileOperationInProgress(true);
+        showStatus("正在删除文件");
+        boolean started = runWithService(svc -> {
+            return ManagedFileDeleter.delete(names, name -> svc.deleteFile(dir, name));
+        }, (result, error) -> {
+            if (isFinishing() || isDestroyed()) {
+                return;
             }
+            setFileOperationInProgress(false);
+            if (error == null) {
+                selection.removeAll(result.deleted);
+                if (result.errors.isEmpty()) {
+                    selection.exit();
+                }
+            }
+            ManagedFileDeleter.showErrors(this, result, error);
+            invalidateOptionsMenu();
             refreshList();
-        }));
-        row.addView(delete);
-        return row;
+        });
+        if (!started) {
+            setFileOperationInProgress(false);
+            showStatus("服务不可用，请稍后再试");
+        }
+    }
+
+    private final class FileAdapter extends RecyclerView.Adapter<ListItemViewHolder> {
+        private static final int FILE = 0;
+        private static final int EMPTY = 1;
+        private static final int IMPORT = 2;
+        final ArrayList<String> names = new ArrayList<>();
+
+        @Override
+        public int getItemViewType(int position) {
+            if (position < names.size()) {
+                return FILE;
+            }
+            return filesLoaded && names.isEmpty() && position == 0 ? EMPTY : IMPORT;
+        }
+
+        @NonNull
+        @Override
+        public ListItemViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            int layout = viewType == FILE ? R.layout.list_item_row
+                    : viewType == EMPTY ? R.layout.managed_files_empty : R.layout.preference_add_row;
+            var view = LayoutInflater.from(parent.getContext()).inflate(layout, parent, false);
+            view.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            return new ListItemViewHolder(view);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull ListItemViewHolder holder, int position) {
+            holder.bind(position, getItemCount());
+            ListItemCardView card = holder.itemView.findViewById(R.id.list_item_card);
+            if (holder.getItemViewType() == FILE) {
+                var name = names.get(position);
+                TextView label = holder.itemView.findViewById(android.R.id.title);
+                label.setText(name);
+                EditableListItem.bind((ListItemLayout) holder.itemView,
+                        selection.isEditing() && filesLoaded && !fileOperationInProgress,
+                        selection.contains(name), () -> {
+                    if (!selection.isEditing() || !filesLoaded || fileOperationInProgress || !names.contains(name)) {
+                        return;
+                    }
+                    selection.toggle(name);
+                    int currentPosition = holder.getBindingAdapterPosition();
+                    if (currentPosition != RecyclerView.NO_POSITION) {
+                        notifyItemChanged(currentPosition);
+                    }
+                    invalidateOptionsMenu();
+                });
+            } else if (holder.getItemViewType() == IMPORT) {
+                TextView title = holder.itemView.findViewById(android.R.id.title);
+                title.setText(fixedName != null ? "导入并保存为 " + fixedName : "导入文件（可多选）");
+                boolean canImport = !selection.isEditing() && !fileOperationInProgress;
+                holder.itemView.setEnabled(canImport);
+                card.setEnabled(canImport);
+                title.setEnabled(canImport);
+                holder.itemView.findViewById(R.id.list_add_icon).setEnabled(canImport);
+                card.setOnClickListener(canImport ? v -> startImport() : null);
+                card.setClickable(canImport);
+                card.setFocusable(canImport);
+            }
+        }
+
+        @Override
+        public int getItemCount() {
+            return names.size() + (filesLoaded && names.isEmpty() ? 1 : 0) + 1;
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putBoolean("editing", selection.isEditing());
+        outState.putStringArrayList("selected_items", selection.snapshot());
+        super.onSaveInstanceState(outState);
     }
 
     @Override
@@ -176,82 +330,26 @@ public class ManageFilesActivity extends BaseAvbActivity {
         if (requestCode != REQUEST_CODE_IMPORT || resultCode != RESULT_OK || data == null) {
             return;
         }
-        var uris = new ArrayList<Uri>();
-        if (data.getClipData() != null) {
-            for (int i = 0; i < data.getClipData().getItemCount(); i++) {
-                uris.add(data.getClipData().getItemAt(i).getUri());
-            }
-        } else if (data.getData() != null) {
-            uris.add(data.getData());
-        }
+        var uris = ManagedFileImporter.uris(data);
         if (uris.isEmpty()) {
+            toast("未选择文件");
             return;
         }
-        executor.execute(() -> importUris(uris));
-    }
-
-    private void importUris(List<Uri> uris) {
-        var staging = new File(getCacheDir(), "import");
-        clearDir(staging);
-        //noinspection ResultOfMethodCallIgnored
-        staging.mkdirs();
-        var imported = new ArrayList<String>();
-        for (var uri : uris) {
-            var displayName = displayName(uri);
-            if (displayName == null) {
-                continue;
+        var context = getApplicationContext();
+        setFileOperationInProgress(true);
+        showStatus("正在导入文件");
+        boolean started = runWithService(svc -> ManagedFileImporter.importFiles(context, svc, uris, dir, fixedName),
+                (result, error) -> {
+            if (isFinishing() || isDestroyed()) {
+                return;
             }
-            final var name = fixedName != null ? fixedName : displayName;
-            var staged = new File(staging, name);
-            try (InputStream in = getContentResolver().openInputStream(uri);
-                 FileOutputStream out = new FileOutputStream(staged)) {
-                if (in == null) {
-                    continue;
-                }
-                var buf = new byte[65536];
-                int read;
-                while ((read = in.read(buf)) != -1) {
-                    out.write(buf, 0, read);
-                }
-            } catch (Exception e) {
-                mainHandler.post(() -> toast("读取 " + name + " 失败：" + e));
-                continue;
-            }
-            try {
-                service.importFile(staged.getAbsolutePath(), dir, name);
-                imported.add(name);
-            } catch (Exception e) {
-                var msg = e.getMessage();
-                mainHandler.post(() -> toast("导入 " + name + " 失败：" + msg));
-            }
-            //noinspection ResultOfMethodCallIgnored
-            staged.delete();
-        }
-        mainHandler.post(() -> {
-            toast("已导入 " + imported.size() + " 个文件");
+            setFileOperationInProgress(false);
+            ManagedFileImporter.showResult(this, result, error);
             refreshList();
         });
-    }
-
-    private String displayName(Uri uri) {
-        try (Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (index >= 0) {
-                    return new File(cursor.getString(index)).getName();
-                }
-            }
-        }
-        return null;
-    }
-
-    private void clearDir(File dir) {
-        var files = dir.listFiles();
-        if (files != null) {
-            for (var f : files) {
-                //noinspection ResultOfMethodCallIgnored
-                f.delete();
-            }
+        if (!started) {
+            setFileOperationInProgress(false);
+            showStatus("服务不可用，请重新选择文件");
         }
     }
 }

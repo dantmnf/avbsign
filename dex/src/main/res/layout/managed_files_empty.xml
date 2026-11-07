@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.listitem.ListItemLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="@dimen/expressive_list_item_gap">
+
+    <com.google.android.material.listitem.ListItemCardView
+        android:id="@+id/list_item_card"
+        style="?attr/listItemCardViewSegmentedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:duplicateParentState="true"
+        app:swipeEnabled="false">
+
+        <TextView
+            style="@style/Widget.Material3.TextView.ListItem.SupportingText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="40dp"
+            android:gravity="center_vertical"
+            android:text="暂无文件" />
+    </com.google.android.material.listitem.ListItemCardView>
+</com.google.android.material.listitem.ListItemLayout>

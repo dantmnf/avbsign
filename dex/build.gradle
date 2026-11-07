@@ -30,6 +30,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests.all {
+            useJUnit()
+            systemProperty 'test.resourcesDir', file('src/main/res').absolutePath
+        }
+    }
+
     packagingOptions {
         resources {
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
@@ -49,6 +56,9 @@ androidComponents {
 }
 
 dependencies {
+    implementation libs.appcompat
+    implementation libs.preference
+    implementation libs.recyclerview
     implementation libs.cardview
     implementation libs.material
 
@@ -59,4 +69,5 @@ dependencies {
     implementation libs.shizuku.api
     implementation libs.shizuku.provider
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    testImplementation 'junit:junit:4.13.2'
 }

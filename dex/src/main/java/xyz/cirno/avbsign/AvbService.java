@@ -11,10 +11,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
+import org.json.JSONObject;
+import org.json.JSONArray;
 
 import xyz.cirno.avb.util.Logger;
+import xyz.cirno.avb.rebuild.AvbRebuilder;
 
 /**
  * Privileged service running under Shizuku (root or shell). All operations
@@ -22,8 +26,11 @@ import xyz.cirno.avb.util.Logger;
  * UI process never needs to invoke su or other root command lines.
  */
 public class AvbService extends IAvbService.Stub {
+    private final BackupStore backups = new BackupStore(Paths.get(AvbPaths.BACKUP_BASE_DIR));
 
-    private volatile IAvbLogCallback callback;
+    private IAvbLogCallback callback;
+    private long logSequence;
+    private RemoteException logDeliveryError;
 
     public AvbService() {
         attachLogger();
@@ -35,11 +42,14 @@ public class AvbService extends IAvbService.Stub {
 
     private void attachLogger() {
         Logger.setListener((level, msg) -> {
-            var cb = callback;
-            if (cb != null) {
-                try {
-                    cb.onLog(level, msg);
-                } catch (RemoteException ignored) {
+            Log.i("AvbService", msg);
+            synchronized (this) {
+                if (callback != null) {
+                    try {
+                        callback.onLog(++logSequence, level, msg);
+                    } catch (RemoteException e) {
+                        logDeliveryError = e;
+                    }
                 }
             }
         });
@@ -51,8 +61,21 @@ public class AvbService extends IAvbService.Stub {
     }
 
     @Override
-    public void setLogCallback(IAvbLogCallback callback) {
+    public synchronized long setLogCallback(IAvbLogCallback callback) {
+        long lastSequence = logSequence;
         this.callback = callback;
+        if (callback != null) {
+            logSequence = 0;
+            logDeliveryError = null;
+        } else {
+            logSequence = 0;
+            var error = logDeliveryError;
+            logDeliveryError = null;
+            if (error != null) {
+                throw new IllegalStateException("发送日志失败", error);
+            }
+        }
+        return lastSequence;
     }
 
     @Override
@@ -62,6 +85,7 @@ public class AvbService extends IAvbService.Stub {
             if (aidl != null) {
                 var result = aidl.getSuffix(aidl.getActiveBootSlot());
                 Log.i("AvbService", "get active slot from aidl: " + result);
+                return result;
             }
         } catch (Throwable ignored) {
         }
@@ -76,6 +100,40 @@ public class AvbService extends IAvbService.Stub {
         }
         var out = SystemProperties.get("ro.boot.slot_suffix", "");
         return out == null ? "" : out.trim();
+    }
+
+    @Override
+    public String getBackupSlot() {
+        Exception failure = null;
+        try {
+            var aidl = BootControlAidl.getInstance();
+            if (aidl != null) {
+                var result = aidl.getSuffix(aidl.getActiveBootSlot());
+                requireSlotSuffix(result);
+                return result;
+            }
+        } catch (Exception e) {
+            failure = e;
+        }
+        try {
+            var hidl = BootControlHidl.getInstance();
+            if (hidl != null) {
+                var result = hidl.getSuffix(hidl.getActiveBootSlot());
+                requireSlotSuffix(result);
+                return result;
+            }
+        } catch (Exception e) {
+            if (failure != null) e.addSuppressed(failure);
+            failure = e;
+        }
+        throw new IllegalStateException("无法确定下次启动槽位", failure);
+    }
+
+    @Override
+    public String getCurrentSlot() {
+        var current = SystemProperties.get("ro.boot.slot_suffix", "").trim();
+        requireSlotSuffix(current);
+        return current;
     }
 
     @Override
@@ -103,58 +161,229 @@ public class AvbService extends IAvbService.Stub {
     }
 
     @Override
-    public String fix(String sourcePattern, String keysDir, String rootKeyPath, String backupDir) {
+    public String fix(String sourcePattern, String keysDir, String rootKeyPath, String backupDir,
+                      boolean replaceBootloader, boolean currentSource, String[] partitions) {
         try {
             var options = new AvbTool.FixOptions();
             options.sourcePattern = sourcePattern;
             options.keysDir = keysDir;
             options.rootKeyPath = rootKeyPath;
-            options.backupDir = backupDir;
+            if (replaceBootloader) {
+                options.bootloaderSources = () -> bootloaderSources(currentSource, partitions);
+            }
+            if (backupDir != null) {
+                options.backupAction = (names, pattern) -> createBackupForPattern(pattern, names, null, true);
+            }
             var rebuilt = AvbTool.fix(options);
             if (rebuilt.isEmpty()) {
                 return "验证通过，无需修复。";
             }
             return "已重建并写入分区：" + String.join(", ", rebuilt)
-                    + (backupDir != null ? "\n备份目录：" + backupDir : "");
+                    + (backupDir != null ? "\n已创建自动备份。" : "");
+        } catch (AvbRebuilder.MissingRootKeyException e) {
+            return "修复失败：根 vbmeta 缺少匹配的私钥，请导入密钥或启用替换 bootloader。";
         } catch (Throwable e) {
             return "修复失败：" + e;
         }
     }
 
     @Override
-    public String replaceBootloaderImages(String imagesDir, String slotSuffix, String backupDir) {
-        var results = new ArrayList<String>();
+    public String findCurrentSlotRootKey() {
         try {
-            try (var stream = Files.list(Paths.get(imagesDir))) {
-                for (var file : (Iterable<Path>) stream::iterator) {
-                    var fileName = file.getFileName().toString();
-                    if (!fileName.endsWith(".img")) {
-                        continue;
-                    }
-                    var name = fileName.substring(0, fileName.length() - ".img".length());
-                    var target = Paths.get("/dev/block/by-name/" + name + slotSuffix);
-                    if (backupDir != null) {
-                        Files.createDirectories(Paths.get(backupDir));
-                        var backupPath = Paths.get(backupDir, name + ".img");
-                        Logger.info("备份 %s -> %s", target, backupPath);
-                        AvbTool.copyFile(target, backupPath);
-                    }
-                    if (AvbTool.isBlockDeviceReadOnly(target.toString())) {
-                        Logger.info("设置 %s 为可写", target);
-                        AvbTool.setBlockDeviceReadOnly(target.toString(), false);
-                    }
-                    Logger.info("写入 %s -> %s", fileName, target);
-                    AvbTool.copyFile(file, target);
-                    results.add(name);
+            var current = SystemProperties.get("ro.boot.slot_suffix", "").trim();
+            requireSlotSuffix(current);
+            return AvbTool.findMatchingKey(Paths.get("/dev/block/by-name/vbmeta" + current),
+                    Paths.get(AvbPaths.KEYS_DIR));
+        } catch (Exception e) {
+            throw new IllegalStateException("读取当前槽位 vbmeta 或密钥失败：" + e.getMessage(), e);
+        }
+    }
+
+    private java.util.Map<String, Path> bootloaderSources(boolean currentSource, String[] partitions)
+            throws IOException {
+        var sources = new java.util.LinkedHashMap<String, Path>();
+        if (currentSource) {
+            if (partitions == null || partitions.length == 0) {
+                throw new IllegalArgumentException("未选择分区");
+            }
+            var current = getCurrentSlot();
+            for (var name : partitions) {
+                requirePartitionName(name);
+                if (sources.put(name, Paths.get("/dev/block/by-name/" + name + current)) != null) {
+                    throw new IllegalArgumentException("分区名重复：" + name);
                 }
             }
-            if (results.isEmpty()) {
-                return "目录中没有 .img 文件。";
+        } else {
+            try (var files = Files.list(Paths.get(AvbPaths.BOOTLOADER_DIR))) {
+                for (var file : files.filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().endsWith(".img")).sorted().toList()) {
+                    var filename = file.getFileName().toString();
+                    var name = filename.substring(0, filename.length() - 4);
+                    requirePartitionName(name);
+                    sources.put(name, file);
+                }
             }
-            return "已刷入分区：" + String.join(", ", results)
-                    + (backupDir != null ? "\n备份目录：" + backupDir : "");
-        } catch (Throwable e) {
-            return "刷写失败：" + e;
+        }
+        return sources;
+    }
+
+    private String createBackupForPattern(String pattern, java.util.Collection<String> selected,
+                                          String expectedSlot, boolean automatic) throws IOException {
+        var current = SystemProperties.get("ro.boot.slot_suffix", "").trim();
+        var next = getBackupSlot();
+        requireSlotSuffix(current);
+        requireSlotSuffix(next);
+        if (expectedSlot != null && !expectedSlot.equals(next)) {
+            throw new IOException("下次启动槽位已改变");
+        }
+        Log.i("AvbService", "BackupGraph.read " + pattern);
+        var graph = BackupGraph.read(pattern);
+        var names = new java.util.LinkedHashSet<>(selected);
+        names.addAll(graph.dependencies(selected));
+        var sourceSlot = pattern.endsWith(current) ? current : pattern.endsWith(next) ? next : "";
+        graph.scanEmbeddedFingerprints(pattern, names, sourceSlot);
+        if (!next.equals(getBackupSlot())) {
+            throw new IOException("下次启动槽位已改变");
+        }
+        var currentFingerprints = readCurrentVbmetaFingerprints();
+        if (currentFingerprints.isEmpty()) {
+            Logger.warn("当前槽位 vbmeta 中没有 fingerprint 属性，无法比较当前系统。");
+        }
+        var id = backups.create(pattern, names, current, next, graph.fingerprint(currentFingerprints),
+                graph.fingerprintProperties(), automatic);
+        Logger.info("备份已保存：%s", id);
+        return id;
+    }
+
+    @Override
+    public String[] backupDependencies(String[] partitions) {
+        try {
+            var next = getBackupSlot();
+            requireSlotSuffix(next);
+            if (partitions == null || partitions.length == 0) {
+                throw new IllegalArgumentException("未选择分区");
+            }
+            for (var name : partitions) {
+                requirePartitionName(name);
+            }
+
+            var pattern = "/dev/block/by-name/{}" + next;
+            Log.i("AvbService", "BackupGraph.read " + pattern);
+            return BackupGraph.read(pattern)
+                    .dependencies(Arrays.asList(partitions)).toArray(new String[0]);
+        } catch (IOException e) {
+            throw new IllegalStateException("读取 vbmeta 失败：" + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String createBackup(String[] partitions, String expectedSlot) {
+        try {
+            requireSlotSuffix(expectedSlot);
+            if (!expectedSlot.equals(getBackupSlot())) {
+                throw new IOException("下次启动槽位已改变，请重新打开备份配置");
+            }
+            if (partitions == null || partitions.length == 0) {
+                throw new IOException("未选择分区");
+            }
+            var id = createBackupForPattern("/dev/block/by-name/{}" + expectedSlot,
+                    Arrays.asList(partitions), expectedSlot, false);
+            return "备份完成：" + id;
+        } catch (Exception e) {
+            return "备份失败：" + e;
+        }
+    }
+
+    @Override
+    public String[] listBackups() {
+        try {
+            var result = new ArrayList<String>();
+            java.util.Map<String, String> currentFingerprints = null;
+            String currentFingerprintError = null;
+            try {
+                currentFingerprints = readCurrentVbmetaFingerprints();
+            } catch (IOException | RuntimeException e) {
+                currentFingerprintError = e.toString();
+                Log.e("AvbService", "读取当前槽位 vbmeta fingerprint 失败", e);
+            }
+            for (var id : backups.list()) {
+                var json = new JSONObject();
+                json.put("id", id);
+                try {
+                    var meta = backups.metadata(id);
+                    var automatic = backups.automatic(meta);
+                    if (automatic != null) json.put("automatic", automatic);
+                    json.put("created", meta.getProperty("created", ""));
+                    json.put("currentSlot", meta.getProperty("currentSlot", ""));
+                    json.put("nextSlot", meta.getProperty("nextSlot", ""));
+                    json.put("fingerprint", meta.getProperty("fingerprint", ""));
+                    boolean propertiesAvailable = meta.containsKey("fingerprintProperty.count");
+                    json.put("fingerprintPropertiesAvailable", propertiesAvailable);
+                    var fingerprintProperties = new JSONArray();
+                    var storedFingerprints = backups.fingerprintProperties(meta);
+                    for (var property : storedFingerprints.entrySet()) {
+                        var item = new JSONObject();
+                        item.put("name", property.getKey());
+                        item.put("value", property.getValue());
+                        fingerprintProperties.put(item);
+                    }
+                    json.put("fingerprintProperties", fingerprintProperties);
+                    json.put("fingerprintMatch",
+                            FingerprintComparison.compare(currentFingerprints, storedFingerprints, propertiesAvailable).name());
+                    if (currentFingerprintError != null) {
+                        json.put("currentFingerprintError", currentFingerprintError);
+                    }
+                    json.put("sourcePattern", meta.getProperty("sourcePattern", ""));
+                    json.put("partitions", new JSONArray(backups.partitions(meta)));
+                } catch (IOException | IllegalArgumentException e) {
+                    Log.e("AvbService", "读取备份元数据失败：" + id, e);
+                    json.put("error", e.toString());
+                }
+                result.add(json.toString());
+            }
+            return result.toArray(new String[0]);
+        } catch (Exception e) {
+            throw new IllegalStateException("读取备份失败：" + e.getMessage(), e);
+        }
+    }
+
+    private java.util.Map<String, String> readCurrentVbmetaFingerprints() throws IOException {
+        var current = getCurrentSlot();
+        return BackupGraph.readRootFingerprintProperties(Paths.get("/dev/block/by-name/vbmeta" + current));
+    }
+
+    @Override
+    public void deleteBackup(String id) {
+        try {
+            backups.delete(id);
+        } catch (IOException e) {
+            throw new IllegalStateException("删除备份失败：" + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public String restoreBackup(String id, String expectedSlot) {
+        try {
+            requireSlotSuffix(expectedSlot);
+            if (!expectedSlot.equals(getCurrentSlot())) {
+                throw new IOException("当前启动槽位已改变，请重新确认");
+            }
+            backups.restore(id, "/dev/block/by-name/{}" + expectedSlot);
+            return "备份恢复完成。";
+        } catch (Exception e) {
+            return "恢复失败：" + e;
+        }
+    }
+
+    private static void requireSlotSuffix(String suffix) {
+        if (suffix == null || !suffix.matches("_[A-Za-z0-9]+")) {
+            throw new IllegalArgumentException("无效的槽位后缀：" + suffix);
+        }
+    }
+
+    private static void requirePartitionName(String name) {
+        if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9_.-]*")) {
+            throw new IllegalArgumentException("无效的分区名：" + name);
         }
     }
 
@@ -166,8 +395,10 @@ public class AvbService extends IAvbService.Stub {
                     .map(p -> p.getFileName().toString())
                     .sorted()
                     .toArray(String[]::new);
-        } catch (IOException e) {
+        } catch (java.nio.file.NoSuchFileException e) {
             return new String[0];
+        } catch (IOException e) {
+            throw new IllegalStateException("读取目录失败：" + dir, e);
         }
     }
 

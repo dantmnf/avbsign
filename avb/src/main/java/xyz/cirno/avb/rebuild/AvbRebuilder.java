@@ -33,14 +33,21 @@ public class AvbRebuilder {
 
     private final Map<AvbPublicKey, AvbKeyPair> availableKeys = new HashMap<>();
     private final Map<Integer, AvbKeyPair> generatedKeys = new HashMap<>();
+    private final String rootImageName;
+
+    public static final class MissingRootKeyException extends IllegalStateException {
+        public MissingRootKeyException(String partition) {
+            super("Missing private key for root vbmeta: " + partition);
+        }
+    }
 
     public AvbRebuilder(AvbVerifyResult result) {
+        rootImageName = result.rootImageName;
         for (var entry : result.partitionRecords.entrySet()) {
             var record = entry.getValue();
             var dup = new PartitionRecord(record.name(), record.vbmetaImage().clone(), record.footer() != null ? record.footer().clone() : null);
             this.partitionRecords.put(entry.getKey(), dup);
         }
-        this.partitionRecords.putAll(result.partitionRecords);
         this.partitionReferences.addAll(result.partitionReferences);
         for (var issue : result.issues) {
             addIssue(issue);
@@ -124,6 +131,10 @@ public class AvbRebuilder {
         }
 
         Logger.info("No private key found for partition " + vbmetaPartition + ", trying to replace public key");
+
+        if (vbmetaPartition.equals(rootImageName)) {
+            throw new MissingRootKeyException(vbmetaPartition);
+        }
 
         // try to replace key from references
         var refs = partitionReferences.stream()

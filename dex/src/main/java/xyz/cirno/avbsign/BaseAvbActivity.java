@@ -1,11 +1,12 @@
 package xyz.cirno.avbsign;
 
-import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.widget.LinearLayout;
 import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,7 +18,7 @@ import rikka.shizuku.Shizuku;
  * {@link AvbServiceManager}. Subclasses override the callbacks to react to
  * state changes; they never bind their own connections.
  */
-public abstract class BaseAvbActivity extends Activity {
+public abstract class BaseAvbActivity extends AppCompatActivity {
 
     protected static final int REQUEST_CODE_PERMISSION = 1;
 
@@ -25,12 +26,6 @@ public abstract class BaseAvbActivity extends Activity {
     protected final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     protected volatile IAvbService service;
-
-    private final Shizuku.OnRequestPermissionResultListener permissionResultListener = (requestCode, grantResult) -> {
-        if (requestCode == REQUEST_CODE_PERMISSION) {
-            onShizukuAvailable();
-        }
-    };
 
     private final AvbServiceManager.Listener serviceListener = svc -> {
         var becameReady = service == null && svc != null;
@@ -44,20 +39,18 @@ public abstract class BaseAvbActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Shizuku.addRequestPermissionResultListener(permissionResultListener);
-        AvbServiceManager.addListener(serviceListener);
+        AvbServiceManager.getInstance().addListener(serviceListener);
     }
 
     @Override
     protected void onDestroy() {
-        Shizuku.removeRequestPermissionResultListener(permissionResultListener);
-        AvbServiceManager.removeListener(serviceListener);
+        AvbServiceManager.getInstance().removeListener(serviceListener);
         executor.shutdownNow();
         super.onDestroy();
     }
 
     protected void onShizukuAvailable() {
-        AvbServiceManager.ensureBound();
+        AvbServiceManager.getInstance().ensureBound();
         onShizukuStateChanged();
     }
 
@@ -70,52 +63,43 @@ public abstract class BaseAvbActivity extends Activity {
     }
 
     protected boolean isShizukuGranted() {
-        return AvbServiceManager.isShizukuGranted();
+        return AvbServiceManager.getInstance().isShizukuGranted();
     }
 
     protected void requestShizukuPermission() {
-        if (!Shizuku.pingBinder()) {
+        if (!AvbServiceManager.getInstance().isShizukuAvailable()) {
             toast("Shizuku 未运行");
             return;
         }
-        if (Shizuku.checkSelfPermission() != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (!isShizukuGranted()) {
             if (Shizuku.shouldShowRequestPermissionRationale()) {
                 toast("需要 Shizuku 权限才能执行底层操作");
             }
-            Shizuku.requestPermission(REQUEST_CODE_PERMISSION);
+            AvbServiceManager.getInstance().requestPermission(REQUEST_CODE_PERMISSION);
         } else {
             onShizukuAvailable();
         }
     }
 
-    protected interface ServiceAction<T> {
-        T run(IAvbService svc) throws Exception;
+    protected interface ServiceAction<T> extends AvbServiceManager.ServiceAction<T> {
     }
 
-    protected interface ResultHandler<T> {
-        void onResult(T result, Exception error);
+    protected interface ResultHandler<T> extends AvbServiceManager.ResultHandler<T> {
     }
 
     /** Run an action on a worker thread; the handler is invoked on the main thread. */
-    protected <T> void runWithService(ServiceAction<T> action, ResultHandler<T> handler) {
+    protected <T> boolean runWithService(ServiceAction<T> action, ResultHandler<T> handler) {
         if (!isShizukuGranted()) {
             toast("Shizuku 不可用或未授权");
-            return;
+            return false;
         }
         var svc = service;
         if (svc == null) {
-            AvbServiceManager.ensureBound();
+            AvbServiceManager.getInstance().ensureBound();
             toast("服务尚未连接，请稍后再试");
-            return;
+            return false;
         }
-        executor.execute(() -> {
-            try {
-                var result = action.run(svc);
-                mainHandler.post(() -> handler.onResult(result, null));
-            } catch (Exception e) {
-                mainHandler.post(() -> handler.onResult(null, e));
-            }
-        });
+        return AvbServiceManager.getInstance().run(action, handler);
     }
 
     /** Pad the content view so it is not covered by the system navigation bar. */

@@ -5,7 +5,7 @@ import xyz.cirno.avbsign.IAvbLogCallback;
 interface IAvbService {
     void destroy() = 16777114;
 
-    void setLogCallback(IAvbLogCallback callback) = 1;
+    long setLogCallback(IAvbLogCallback callback) = 1;
 
     /** Current boot slot suffix (e.g. "_a"), or empty on non-A/B devices. */
     String getSlotSuffix() = 2;
@@ -15,10 +15,8 @@ interface IAvbService {
 
     String check(String pattern) = 4;
 
-    String fix(String sourcePattern, String keysDir, String rootKeyPath, String backupDir) = 5;
-
-    /** Replace partitions with the .img files in imagesDir, backing up originals first. */
-    String replaceBootloaderImages(String imagesDir, String slotSuffix, String backupDir) = 6;
+    String fix(String sourcePattern, String keysDir, String rootKeyPath, String backupDir,
+               boolean replaceBootloader, boolean currentSource, in String[] partitions) = 5;
 
     /** List file names in a directory under /data/adb. */
     String[] listFiles(String dir) = 7;
@@ -28,4 +26,20 @@ interface IAvbService {
 
     /** Delete a file from a managed directory under /data/adb. */
     void deleteFile(String dir, String name) = 9;
+
+    String findCurrentSlotRootKey() = 10;
+
+    String[] backupDependencies(in String[] partitions) = 12;
+
+    String createBackup(in String[] partitions, String expectedSlot) = 13;
+
+    String[] listBackups() = 14;
+
+    void deleteBackup(String id) = 15;
+
+    String restoreBackup(String id, String expectedSlot) = 16;
+
+    String getBackupSlot() = 17;
+
+    String getCurrentSlot() = 18;
 }
