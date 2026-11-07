@@ -25,7 +25,6 @@ dependencyResolutionManagement {
 rootProject.name = "avbsign"
 include ':dex'
 include ':avb'
-include ':magisk'
 include ':entry'
 include ':jar'
 include ':hidden-api'
