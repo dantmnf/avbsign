@@ -12,7 +12,8 @@ final class PreferenceListPosition {
         if (group != null) {
             for (int i = 0; i < group.getPreferenceCount(); i++) {
                 var sibling = group.getPreference(i);
-                if (!sibling.isVisible()) {
+                if (!sibling.isVisible()
+                        || sibling.getLayoutResource() == R.layout.preference_footer_material3) {
                     continue;
                 }
                 if (sibling == preference) {

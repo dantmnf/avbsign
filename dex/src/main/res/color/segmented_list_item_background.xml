@@ -4,8 +4,5 @@
         android:state_checkable="true"
         android:state_checked="true"
         android:color="?attr/colorSecondaryContainer" />
-    <item
-        android:state_activated="true"
-        android:color="?attr/colorSecondaryContainer" />
     <item android:color="?attr/colorSurfaceContainerHigh" />
 </selector>

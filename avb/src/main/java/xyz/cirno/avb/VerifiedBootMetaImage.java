@@ -167,8 +167,8 @@ public class VerifiedBootMetaImage {
         if (header.algorithmType == AvbAlgorithmType.NONE) {
             throw new InvalidAvbDataException("cannot create signed header with algorithmType=NONE");
         }
-        var pubkey = keyPair.publicKey;
-        var privateKey = keyPair.privateKey;
+        var pubkey = keyPair.publicKey();
+        var privateKey = keyPair.privateKey();
         var pubkeyBuf = pubkey.toByteArray();
         var metadataSize = publicKeyMetadata != null ? publicKeyMetadata.length : 0;
         var serializedDescriptors = descriptors.stream().map(AvbDescriptor::toByteArray).toList();

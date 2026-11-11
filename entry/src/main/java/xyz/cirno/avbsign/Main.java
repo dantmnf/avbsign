@@ -1,23 +1,6 @@
 package xyz.cirno.avbsign;
 
-import java.util.Objects;
-
 public class Main {
-
-    public static byte[] hexStringToByteArray(String hexString) {
-        Objects.requireNonNull(hexString);
-        if (hexString.length() % 2 != 0) {
-            throw new IllegalArgumentException("Hex string must have an even number of characters.");
-        }
-
-        int len = hexString.length();
-        byte[] data = new byte[len / 2];
-
-        for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) Integer.parseInt(hexString.substring(i, i + 2), 16);
-        }
-        return data;
-    }
 
     public static void main(String[] args) {
         try {

@@ -1,12 +1,10 @@
 package xyz.cirno.avbsign;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.SeekableByteChannel;
-import java.nio.file.Paths;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -19,6 +17,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
+import xyz.cirno.avb.AvbDescriptor;
 import xyz.cirno.avb.ChainPartitionDescriptor;
 import xyz.cirno.avb.HashDescriptor;
 import xyz.cirno.avb.HashTreeDescriptor;
@@ -40,9 +39,6 @@ public final class BackupGraph {
 
     public static BackupGraph read(String pattern) throws IOException {
         Logger.info("BackupGraph.read " + pattern);
-        if (pattern == null || !pattern.contains("{}")) {
-            throw new IllegalArgumentException("Invalid partition pattern: " + pattern);
-        }
         var graph = new BackupGraph();
         graph.readPartition(pattern, "vbmeta", new HashSet<>());
         return graph;
@@ -63,7 +59,6 @@ public final class BackupGraph {
 
     private void readPartition(String pattern, String name, Set<String> visited) throws IOException {
         Logger.info("readPartition %s %s", pattern, name);
-        requireName(name);
         if (!visited.add(name)) {
             return;
         }
@@ -71,7 +66,6 @@ public final class BackupGraph {
         try (var channel = FileChannel.open(Paths.get(pattern.replace("{}", name)), StandardOpenOption.READ)) {
             image = ParsedVerifiedBootMetaImage.parseFromPartition(channel);
         }
-
         if (image == null) {
             throw new IOException("Failed to parse vbmeta image in " + name);
         }
@@ -79,37 +73,38 @@ public final class BackupGraph {
         inspectedPartitions.add(new PartitionCandidate(name, true));
         collectProperties(name, image);
         for (var descriptor : image.descriptors) {
-            String child = null;
-            int flags = 0;
-            boolean chain = false;
-            if (descriptor instanceof ChainPartitionDescriptor d) {
-                child = d.partitionName;
-                flags = d.flags;
-                chain = true;
-            } else if (descriptor instanceof HashDescriptor d) {
-                child = d.partitionName;
-                flags = d.flags;
-            } else if (descriptor instanceof HashTreeDescriptor d) {
-                child = d.partitionName;
-                flags = d.flags;
+            var ref = descriptorTarget(descriptor);
+            if (ref == null) {
+                continue;
             }
-            if (child != null) {
-                requireName(child);
-                referencedPartitions.add(new PartitionCandidate(child, (flags & 1) == 0));
-                if ((flags & 1) != 0) {
-                    unslotted.add(child);
-                    if (chain) {
-                        throw new IOException("Non-A/B chain partition is not supported: " + child);
-                    }
-                }
-                if (!child.equals(name)) {
-                    parents.computeIfAbsent(child, ignored -> new LinkedHashSet<>()).add(name);
-                }
+            boolean chain = descriptor instanceof ChainPartitionDescriptor;
+            referencedPartitions.add(ref);
+            if (!ref.slotted()) {
+                unslotted.add(ref.name());
                 if (chain) {
-                    readPartition(pattern, child, visited);
+                    throw new IOException("Non-A/B chain partition is not supported: " + ref.name());
                 }
+            }
+            if (!ref.name().equals(name)) {
+                parents.computeIfAbsent(ref.name(), ignored -> new LinkedHashSet<>()).add(name);
+            }
+            if (chain) {
+                readPartition(pattern, ref.name(), visited);
             }
         }
+    }
+
+    private static PartitionCandidate descriptorTarget(AvbDescriptor descriptor) {
+        if (descriptor instanceof ChainPartitionDescriptor d) {
+            return new PartitionCandidate(d.partitionName, (d.flags & 1) == 0);
+        }
+        if (descriptor instanceof HashDescriptor d) {
+            return new PartitionCandidate(d.partitionName, (d.flags & 1) == 0);
+        }
+        if (descriptor instanceof HashTreeDescriptor d) {
+            return new PartitionCandidate(d.partitionName, (d.flags & 1) == 0);
+        }
+        return null;
     }
 
     private void collectProperties(String partition, ParsedVerifiedBootMetaImage image) {
@@ -131,53 +126,41 @@ public final class BackupGraph {
     public void scanEmbeddedFingerprints(String pattern, Collection<String> selected, String slotSuffix) {
         var candidates = new ArrayDeque<>(referencedPartitions);
         for (var name : selected) {
-            requireName(name);
             candidates.add(new PartitionCandidate(name, true));
         }
         while (!candidates.isEmpty()) {
             var entry = candidates.remove();
-            var name = entry.name();
-            var slotted = entry.slotted();
             if (!inspectedPartitions.add(entry)) {
                 continue;
             }
             var sourcePattern = pattern;
-            if (!slotted) {
+            if (!entry.slotted()) {
                 if (slotSuffix != null && !slotSuffix.isEmpty() && pattern.endsWith(slotSuffix)) {
                     sourcePattern = pattern.substring(0, pattern.length() - slotSuffix.length());
                 } else if (pattern.startsWith("/dev/block/by-name/")) {
-                    Logger.warn("Cannot locate non-A/B partition for fingerprint inspection: %s", name);
+                    Logger.warn("Cannot locate non-A/B partition for fingerprint inspection: %s", entry.name());
                     continue;
                 }
             }
-            var path = Paths.get(sourcePattern.replace("{}", name));
+            var path = Paths.get(sourcePattern.replace("{}", entry.name()));
             if (sourcePattern.startsWith("/dev/block/by-name/") && !Files.exists(path)) {
                 var mapperPath = Paths.get(sourcePattern.replace("/dev/block/by-name/", "/dev/block/mapper/")
-                        .replace("{}", name));
-                if (Files.exists(mapperPath)) path = mapperPath;
+                        .replace("{}", entry.name()));
+                if (Files.exists(mapperPath)) {
+                    path = mapperPath;
+                }
             }
             try (var channel = FileChannel.open(path, StandardOpenOption.READ)) {
-                long size = AvbTool.fileSize(path);
-                if (size < Integer.BYTES) continue;
-                var image = ParsedVerifiedBootMetaImage.parseFromPartition(new SizedChannel(channel, size));
+                if (channel.size() < Integer.BYTES) {
+                    continue;
+                }
+                var image = ParsedVerifiedBootMetaImage.parseFromPartition(channel);
                 if (image != null) {
-                    collectProperties(name, image);
+                    collectProperties(entry.name(), image);
                     for (var descriptor : image.descriptors) {
-                        String child = null;
-                        int flags = 0;
-                        if (descriptor instanceof ChainPartitionDescriptor d) {
-                            child = d.partitionName;
-                            flags = d.flags;
-                        } else if (descriptor instanceof HashDescriptor d) {
-                            child = d.partitionName;
-                            flags = d.flags;
-                        } else if (descriptor instanceof HashTreeDescriptor d) {
-                            child = d.partitionName;
-                            flags = d.flags;
-                        }
-                        if (child != null) {
-                            requireName(child);
-                            candidates.add(new PartitionCandidate(child, (flags & 1) == 0));
+                        var ref = descriptorTarget(descriptor);
+                        if (ref != null) {
+                            candidates.add(ref);
                         }
                     }
                 }
@@ -189,31 +172,6 @@ public final class BackupGraph {
 
     public Map<String, String> fingerprintProperties() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(fingerprintProperties));
-    }
-
-    private static final class SizedChannel implements SeekableByteChannel {
-        private final SeekableByteChannel channel;
-        private final long size;
-
-        SizedChannel(SeekableByteChannel channel, long size) {
-            this.channel = channel;
-            this.size = size;
-        }
-
-        @Override public int read(ByteBuffer dst) throws IOException { return channel.read(dst); }
-        @Override public int write(ByteBuffer src) throws IOException { return channel.write(src); }
-        @Override public long position() throws IOException { return channel.position(); }
-        @Override public SeekableByteChannel position(long position) throws IOException {
-            channel.position(position);
-            return this;
-        }
-        @Override public long size() { return size; }
-        @Override public SeekableByteChannel truncate(long size) throws IOException {
-            channel.truncate(size);
-            return this;
-        }
-        @Override public boolean isOpen() { return channel.isOpen(); }
-        @Override public void close() throws IOException { channel.close(); }
     }
 
     public ArrayList<String> dependencies(Collection<String> partitions) {
@@ -252,14 +210,10 @@ public final class BackupGraph {
         for (var key : new String[]{"com.android.build.system.fingerprint",
                 "com.android.build.boot.fingerprint", "com.android.build.vendor.fingerprint"}) {
             var value = properties.get(key);
-            if (value != null && !value.isEmpty()) return value;
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
         }
         return "";
-    }
-
-    public static void requireName(String name) {
-        if (name == null || !name.matches("[A-Za-z0-9][A-Za-z0-9_.-]*")) {
-            throw new IllegalArgumentException("Invalid partition name: " + name);
-        }
     }
 }

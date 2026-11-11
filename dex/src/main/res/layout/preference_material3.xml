@@ -17,6 +17,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="56dp"
+            android:duplicateParentState="true"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -24,29 +25,33 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:duplicateParentState="true"
                 android:orientation="vertical">
 
                 <TextView
                     android:id="@android:id/title"
                     style="@style/Widget.Material3.TextView.ListItem.LabelText"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
+                    android:layout_height="wrap_content"
+                    android:duplicateParentState="true" />
 
                 <TextView
                     android:id="@android:id/summary"
                     style="@style/Widget.Material3.TextView.ListItem.SupportingText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp" />
+                    android:layout_marginTop="4dp"
+                    android:duplicateParentState="true" />
             </LinearLayout>
 
             <ImageView
+                style="@style/Widget.Material3.ImageView.ListItem.TrailingIcon"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:layout_marginStart="16dp"
+                android:duplicateParentState="true"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_settings_chevron"
-                app:tint="?attr/colorOnSurfaceVariant" />
+                android:src="@drawable/ic_settings_chevron" />
         </LinearLayout>
     </com.google.android.material.listitem.ListItemCardView>
 </com.google.android.material.listitem.ListItemLayout>

@@ -3,13 +3,11 @@ package xyz.cirno.avbsign;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.widget.LinearLayout;
+import android.view.View;
+import android.view.WindowInsets;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import rikka.shizuku.Shizuku;
 
@@ -23,8 +21,6 @@ public abstract class BaseAvbActivity extends AppCompatActivity {
     protected static final int REQUEST_CODE_PERMISSION = 1;
 
     protected final Handler mainHandler = new Handler(Looper.getMainLooper());
-    protected final ExecutorService executor = Executors.newSingleThreadExecutor();
-
     protected volatile IAvbService service;
 
     private final AvbServiceManager.Listener serviceListener = svc -> {
@@ -45,7 +41,6 @@ public abstract class BaseAvbActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         AvbServiceManager.getInstance().removeListener(serviceListener);
-        executor.shutdownNow();
         super.onDestroy();
     }
 
@@ -81,20 +76,14 @@ public abstract class BaseAvbActivity extends AppCompatActivity {
         }
     }
 
-    protected interface ServiceAction<T> extends AvbServiceManager.ServiceAction<T> {
-    }
-
-    protected interface ResultHandler<T> extends AvbServiceManager.ResultHandler<T> {
-    }
-
     /** Run an action on a worker thread; the handler is invoked on the main thread. */
-    protected <T> boolean runWithService(ServiceAction<T> action, ResultHandler<T> handler) {
+    protected <T> boolean runWithService(AvbServiceManager.ServiceAction<T> action,
+                                         AvbServiceManager.ResultHandler<T> handler) {
         if (!isShizukuGranted()) {
             toast("Shizuku 不可用或未授权");
             return false;
         }
-        var svc = service;
-        if (svc == null) {
+        if (service == null) {
             AvbServiceManager.getInstance().ensureBound();
             toast("服务尚未连接，请稍后再试");
             return false;
@@ -103,26 +92,18 @@ public abstract class BaseAvbActivity extends AppCompatActivity {
     }
 
     /** Pad the content view so it is not covered by the system navigation bar. */
-    protected void applySystemBarInsets(android.view.View root) {
+    protected void applySystemBarInsets(View root) {
         var initialPaddingLeft = root.getPaddingLeft();
         var initialPaddingTop = root.getPaddingTop();
         var initialPaddingRight = root.getPaddingRight();
         var initialPaddingBottom = root.getPaddingBottom();
         root.setOnApplyWindowInsetsListener((v, insets) -> {
-            var bars = insets.getInsets(android.view.WindowInsets.Type.systemBars()
-                    | android.view.WindowInsets.Type.displayCutout());
+            var bars = insets.getInsets(WindowInsets.Type.systemBars()
+                    | WindowInsets.Type.displayCutout());
             v.setPadding(initialPaddingLeft + bars.left, initialPaddingTop + bars.top,
                     initialPaddingRight + bars.right, initialPaddingBottom + bars.bottom);
             return insets;
         });
-    }
-
-    protected LinearLayout.LayoutParams lp() {
-        return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-    }
-
-    protected int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
     }
 
     protected void toast(String msg) {

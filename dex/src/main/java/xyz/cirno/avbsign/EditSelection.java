@@ -31,9 +31,6 @@ final class EditSelection {
     }
 
     void toggle(String name) {
-        if (!editing) {
-            throw new IllegalStateException("Selection requires edit mode");
-        }
         if (!selected.remove(name)) {
             selected.add(name);
         }

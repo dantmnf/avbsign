@@ -19,7 +19,6 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
     final EditSelection selection = new EditSelection();
     boolean loaded;
     boolean busy;
-    int generation;
     String status = "正在连接服务";
     PreferenceCategory listCategory;
 
@@ -34,6 +33,7 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
         super.onViewCreated(view, state);
         setDivider(null);
         var list = getListView();
+        list.setItemAnimator(null);
         int horizontal = getResources().getDimensionPixelSize(R.dimen.expressive_list_horizontal_padding);
         list.setPaddingRelative(horizontal, list.getPaddingTop(), horizontal, list.getPaddingBottom());
         list.setClipToPadding(true);
@@ -47,7 +47,6 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
     }
 
     void serviceDisconnected() {
-        generation++;
         loaded = false;
         status = "服务不可用，请在主界面授权 Shizuku";
         render();
@@ -125,6 +124,9 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
         public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
             super.onBindViewHolder(holder);
             var layout = (ListItemLayout) holder.itemView;
+            layout.setBackground(null);
+            layout.setClickable(false);
+            layout.setFocusable(false);
             PreferenceListPosition.update(layout, this);
             var card = (ListItemCardView) layout.findViewById(R.id.list_item_card);
             boolean actionable = isSelectable() && isEnabled();
@@ -146,6 +148,9 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
         public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
             super.onBindViewHolder(holder);
             var layout = (ListItemLayout) holder.itemView;
+            layout.setBackground(null);
+            layout.setClickable(false);
+            layout.setFocusable(false);
             PreferenceListPosition.update(layout, this);
             var card = (ListItemCardView) layout.findViewById(R.id.list_item_card);
             boolean actionable = isSelectable() && isEnabled();
@@ -176,17 +181,15 @@ abstract class BackupListFragment extends PreferenceFragmentCompat {
                 card.setClickable(actionable);
                 card.setFocusable(actionable);
             } else {
-                EditableListItem.bind((ListItemLayout) holder.itemView, selection.isEditing(),
+                EditableListItem.bind((ListItemLayout) holder.itemView, !busy && selection.isEditing(),
                         selection.contains(name), this::toggle);
             }
         }
 
         private void toggle() {
-            if (!busy && selection.isEditing()) {
-                selection.toggle(name);
-                notifyChanged();
-                requireActivity().invalidateOptionsMenu();
-            }
+            selection.toggle(name);
+            notifyChanged();
+            requireActivity().invalidateOptionsMenu();
         }
     }
 }

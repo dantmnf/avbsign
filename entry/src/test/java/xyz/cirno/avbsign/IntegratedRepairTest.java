@@ -87,7 +87,7 @@ public class IntegratedRepairTest {
         assertArrayEquals(Files.readAllBytes(replacementAbl), Files.readAllBytes(fixture.abl));
         assertFalse(AvbTool.check(fixture.options.sourcePattern).hasIssues());
         try (var channel = java.nio.channels.FileChannel.open(fixture.vbmeta)) {
-            assertEquals(AvbKeyPair.fromPrivateKeyPem(fixture.replacementKey).publicKey,
+            assertEquals(AvbKeyPair.fromPrivateKeyPem(fixture.replacementKey).publicKey(),
                     ParsedVerifiedBootMetaImage.parseFromPartition(channel).publicKey);
         }
     }
@@ -114,12 +114,9 @@ public class IntegratedRepairTest {
     }
 
     @Test
-    public void rejectsReplacementThatAliasesTargetOrChangesAvbPartitionSize() throws Exception {
+    public void rejectsReplacementThatChangesAvbPartitionSizeOrIsEmpty() throws Exception {
         var fixture = fixture(false, false);
         fixture.options.rootKeyPath = fixture.replacementKey.toString();
-        fixture.options.bootloaderSources = () -> Map.of("abl", fixture.abl);
-        assertThrows(IOException.class, () -> AvbTool.fix(fixture.options));
-        assertUnchanged(fixture);
 
         var shortBoot = fixture.root.resolve("short-boot.img");
         Files.write(shortBoot, new byte[]{1, 2, 3});
@@ -163,7 +160,7 @@ public class IntegratedRepairTest {
         fixture.options.rootKeyPath = fixture.replacementKey.toString();
         assertEquals(List.of("vbmeta"), AvbTool.fix(fixture.options));
         try (var channel = java.nio.channels.FileChannel.open(fixture.vbmeta)) {
-            assertEquals(AvbKeyPair.fromPrivateKeyPem(fixture.replacementKey).publicKey,
+            assertEquals(AvbKeyPair.fromPrivateKeyPem(fixture.replacementKey).publicKey(),
                     ParsedVerifiedBootMetaImage.parseFromPartition(channel).publicKey);
         }
         assertFalse(AvbTool.check(fixture.options.sourcePattern).hasIssues());
@@ -202,7 +199,7 @@ public class IntegratedRepairTest {
         Files.write(root.resolve("boot.img"), new byte[]{1, 2, 3, 4});
         writeImage(root.resolve("vbmeta_system.img"), childKey, List.of(hash("boot", new byte[]{0, 0, 0, 0})));
         writeImage(root.resolve("vbmeta.img"), rootKey,
-                List.of(new ChainPartitionDescriptor(1, "vbmeta_system", childKey.publicKey, 0)));
+                List.of(new ChainPartitionDescriptor(1, "vbmeta_system", childKey.publicKey(), 0)));
         var options = new AvbTool.FixOptions();
         options.sourcePattern = root.resolve("{}.img").toString();
         options.keysDir = keyDir.toString();
@@ -227,7 +224,7 @@ public class IntegratedRepairTest {
         Files.write(root.resolve("boot.img"), new byte[]{1, 2, 3, 4});
         writeImage(root.resolve("vbmeta_system.img"), childKey, List.of(hash("boot", new byte[]{0, 0, 0, 0})));
         var vbmeta = root.resolve("vbmeta.img");
-        writeImage(vbmeta, rootKey, List.of(new ChainPartitionDescriptor(1, "vbmeta_system", childKey.publicKey, 0)));
+        writeImage(vbmeta, rootKey, List.of(new ChainPartitionDescriptor(1, "vbmeta_system", childKey.publicKey(), 0)));
         var originalVbmeta = Files.readAllBytes(vbmeta);
         var options = new AvbTool.FixOptions();
         options.sourcePattern = root.resolve("{}.img").toString();

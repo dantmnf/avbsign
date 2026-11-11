@@ -2,18 +2,26 @@ package xyz.cirno.avbsign;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.RemoteException;
 import android.os.SystemProperties;
+import android.util.Log;
+import android.view.Menu;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.widget.SwitchCompat;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+
+import java.util.Arrays;
 
 import rikka.shizuku.Shizuku;
 
 public class MainActivity extends BaseAvbActivity {
 
     private TextView statusView;
-    private EditText patternInput;
+    private TextView patternView;
     private TextView keysSummary;
     private int keyCount = -1;
     private TextView nextSlotView;
@@ -24,6 +32,8 @@ public class MainActivity extends BaseAvbActivity {
     private TextView rootKeySummary;
     private boolean launchingOperation;
 
+    private String customPattern;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -31,7 +41,7 @@ public class MainActivity extends BaseAvbActivity {
         applySystemBarInsets(findViewById(R.id.main_root));
 
         statusView = findViewById(R.id.status_view);
-        patternInput = findViewById(R.id.pattern_input);
+        patternView = findViewById(R.id.pattern_view);
         keysSummary = findViewById(R.id.keys_summary);
         currentSlotView = findViewById(R.id.currentSlotView);
         nextSlotView = findViewById(R.id.nextSlotView);
@@ -62,9 +72,48 @@ public class MainActivity extends BaseAvbActivity {
     }
 
     @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        var item = menu.add("分区路径模板");
+        item.setOnMenuItemClickListener(v -> {
+            var builder = new MaterialAlertDialogBuilder(this);
+            var context = builder.getContext();
+            var edit = new EditText(context);
+            edit.setSingleLine(true);
+            if (customPattern != null && !customPattern.isEmpty()) {
+                edit.setText(customPattern);
+            }
+            var container = new LinearLayout(context);
+            int inset = (int) (24 * context.getResources().getDisplayMetrics().density);
+            container.setPadding(inset, 0, inset, 0);
+            container.addView(edit, new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+            builder.setTitle("分区路径模板");
+            builder.setView(container);
+            builder.setPositiveButton("确定", (dialog, which) -> {
+                var pattern = edit.getText().toString().trim();
+                if (!pattern.contains("{}")) {
+                    new MaterialAlertDialogBuilder(MainActivity.this)
+                            .setTitle("无效的路径模板")
+                            .setMessage("路径模板必须包含 {} 占位符")
+                            .setPositiveButton("确定", null)
+                            .show();
+                    return;
+                }
+                updatePartitionPattern(pattern);
+            });
+            builder.setNegativeButton("取消", null);
+            builder.setNeutralButton("默认", (dialog, which) -> updatePartitionPattern(null));
+            builder.show();
+            return true;
+        });
+        return true;
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         launchingOperation = false;
+        refreshPatternView();
         refreshManagedFiles();
         refreshReplacementSummary();
     }
@@ -77,6 +126,7 @@ public class MainActivity extends BaseAvbActivity {
             statusView.setText("Shizuku 正在运行，但尚未授权");
         } else {
             statusView.setText("Shizuku 已就绪（API " + Shizuku.getVersion() + "）");
+            findViewById(R.id.request_permission_button).setEnabled(false);
         }
     }
 
@@ -87,36 +137,69 @@ public class MainActivity extends BaseAvbActivity {
             if (uid != 0) {
                 toast("警告：服务未以 root 运行（uid=" + uid + "），无法读写块设备。请使用由 root 启动的 Shizuku。");
             }
-            var nextSlot = service.getSlotSuffix();
-            nextSlotView.setText(nextSlot);
-            if (patternInput.getText().toString().isEmpty()) {
-                patternInput.setText("/dev/block/by-name/{}" + nextSlot);
-            }
+            mainHandler.post(() -> {
+                refreshPatternView();
+                refreshReplacementSummary();
+            });
         } catch (Exception e) {
             toast("服务初始化失败：" + e);
         }
         refreshManagedFiles();
     }
 
-    private void refreshManagedFiles() {
+    private void updatePartitionPattern(String value) {
+        customPattern = (value == null || value.isEmpty()) ? null : value;
+        refreshPatternView();
+    }
+
+    private String getActiveBootSlotOrDefault() {
         var svc = service;
         if (svc == null) {
-            return;
+            return "_a";
         }
-        executor.execute(() -> {
-            try {
-                final var keys = svc.listFiles(AvbPaths.KEYS_DIR);
-                mainHandler.post(() -> {
-                    keyCount = keys.length;
-                    keysSummary.setText("已导入 " + keys.length + " 个签名密钥");
-                });
-            } catch (Exception e) {
-                mainHandler.post(() -> {
-                    keyCount = -1;
-                    keysSummary.setText("读取密钥失败：" + e.getMessage());
-                });
+        try {
+            return svc.getActiveSlotSuffix();
+        } catch (RemoteException e) {
+            Log.e("MainActivity", "Failed to refresh active boot slot", e);
+            return "_a";
+        }
+    }
+
+    private String getEffectivePattern() {
+        if (customPattern == null || customPattern.isEmpty()) {
+            return "/dev/block/by-name/{}" + getActiveBootSlotOrDefault();
+        }
+        return customPattern;
+    }
+
+    private void refreshPatternView() {
+        nextSlotView.setText(getActiveBootSlotOrDefault());
+        patternView.setText(getEffectivePattern());
+    }
+
+    private void refreshManagedFiles() {
+        AvbServiceManager.getInstance().run(svc -> svc.listFiles(AvbPaths.KEYS_DIR), (keys, error) -> {
+            if (error != null) {
+                keyCount = -1;
+                keysSummary.setText("读取密钥失败：" + error.getMessage());
+            } else {
+                keyCount = keys.length;
+                keysSummary.setText("已导入 " + keys.length + " 个签名密钥");
             }
         });
+    }
+
+    private String[] getBootloaderImageNames() {
+        var svc = service;
+        if (svc == null) {
+            return new String[0];
+        }
+        try {
+            return svc.listFiles(AvbPaths.BOOTLOADER_DIR);
+        } catch (Exception e) {
+            Log.e("MainActivity", "Failed to get bootloader image names", e);
+            return new String[0];
+        }
     }
 
     private void refreshReplacementSummary() {
@@ -124,13 +207,20 @@ public class MainActivity extends BaseAvbActivity {
         var current = BootloaderSettings.CURRENT.equals(prefs.getString(BootloaderSettings.SOURCE,
                 BootloaderSettings.CURRENT));
         sourceSummary.setText(current ? "当前启动槽位" : "外部文件");
-        partitionsSummary.setText(current ? String.join(", ", BootloaderSettings.partitions(prefs)) : "外部 .img 文件");
+        if (current) {
+            partitionsSummary.setText(String.join(", ", BootloaderSettings.partitions(prefs)));
+        } else {
+            var partitions = Arrays.stream(getBootloaderImageNames())
+                    .map(x -> x.endsWith(".img") ? x.substring(0, x.length() - 4) : x)
+                    .toArray(String[]::new);
+            partitionsSummary.setText(partitions.length == 0 ? "无" : String.join(", ", partitions));
+        }
         var key = prefs.getString(BootloaderSettings.ROOT_KEY, null);
         rootKeySummary.setText(key == null || key.isEmpty() ? "未选择" : key);
     }
 
     private void runCheck() {
-        var pattern = patternInput.getText().toString().trim();
+        var pattern = getEffectivePattern();
         if (pattern.isEmpty()) {
             toast("请先填写路径模板");
             return;
@@ -141,7 +231,7 @@ public class MainActivity extends BaseAvbActivity {
     }
 
     private void runFix() {
-        var pattern = patternInput.getText().toString().trim();
+        var pattern = getEffectivePattern();
         if (pattern.isEmpty()) {
             toast("请先填写路径模板");
             return;
@@ -150,8 +240,8 @@ public class MainActivity extends BaseAvbActivity {
             toast("请先导入签名密钥");
             return;
         }
-        var backup = getSharedPreferences(BackupSettings.PREFS, MODE_PRIVATE)
-                .getBoolean(BackupSettings.AUTO, true) ? AvbService.defaultBackupDir() : null;
+        var autoBackup = getSharedPreferences(BackupSettings.PREFS, MODE_PRIVATE)
+                .getBoolean(BackupSettings.AUTO, true);
         var prefs = BootloaderSettings.preferences(this);
         var key = prefs.getString(BootloaderSettings.ROOT_KEY, null);
         var rootKey = replaceSwitch.isChecked() && key != null && !key.isEmpty()
@@ -166,7 +256,7 @@ public class MainActivity extends BaseAvbActivity {
                 .putExtra(OperationActivity.EXTRA_CURRENT, current)
                 .putExtra(OperationActivity.EXTRA_PARTITIONS,
                         BootloaderSettings.partitions(prefs).toArray(new String[0]))
-                .putExtra(OperationActivity.EXTRA_BACKUP, backup));
+                .putExtra(OperationActivity.EXTRA_AUTO_BACKUP, autoBackup));
     }
 
     private void launchOperation(Intent intent) {

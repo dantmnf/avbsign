@@ -59,7 +59,6 @@ public class BackupConfigFragment extends BackupListFragment {
     void refresh() {
         var activity = (BackupActivity) getActivity();
         if (activity == null || activity.service == null || busy || listCategory == null) return;
-        int request = ++generation;
         loaded = false;
         status = "正在读取 vbmeta";
         render();
@@ -67,13 +66,12 @@ public class BackupConfigFragment extends BackupListFragment {
         activity.runWithService(svc -> {
             String next = svc.getBackupSlot();
             var related = svc.backupDependencies(names);
-            if (!next.equals(svc.getBackupSlot())) throw new IllegalStateException("下次启动槽位已改变");
             var result = new String[related.length + 1];
             result[0] = next;
             System.arraycopy(related, 0, result, 1, related.length);
             return result;
         }, (result, error) -> {
-            if (!isAdded() || activity.isFinishing() || request != generation) return;
+            if (!isAdded() || activity.isFinishing()) return;
             if (error != null) {
                 status = "读取失败：" + error.getMessage();
             } else {

@@ -55,7 +55,7 @@ public class AvbRebuilder {
     }
 
     public void addKeyPair(AvbKeyPair keyPair) {
-        availableKeys.put(keyPair.publicKey, keyPair);
+        availableKeys.put(keyPair.publicKey(), keyPair);
     }
 
     private boolean addIssue(VerificationIssue issue) {
@@ -153,11 +153,11 @@ public class AvbRebuilder {
                 throw new IllegalStateException("unable to fix signature");
             }
             var newKeyPair = getGeneratedKeyPair(cpd.publicKey.keySizeBits);
-            header.publicKey = newKeyPair.publicKey;
+            header.publicKey = newKeyPair.publicKey();
             markVbmetaDirty(vbmetaPartition, newKeyPair);
             Logger.info("Using new key pair to sign partition %s (publicKey=%s)",
-                    vbmetaPartition, newKeyPair.publicKey);
-            addIssue(new VerificationIssue.PublicKeyMismatch(ref.referencedInVbmetaPartition(), ref.descriptorIndex(), newKeyPair.publicKey));
+                    vbmetaPartition, newKeyPair.publicKey());
+            addIssue(new VerificationIssue.PublicKeyMismatch(ref.referencedInVbmetaPartition(), ref.descriptorIndex(), newKeyPair.publicKey()));
         }
     }
 
@@ -184,7 +184,7 @@ public class AvbRebuilder {
         var result = availableKeys.get(publicKey);
         if (result == null) {
             result = generatedKeys.values().stream()
-                    .filter(x -> x.publicKey.equals(publicKey))
+                    .filter(x -> x.publicKey().equals(publicKey))
                     .findFirst().orElse(null);
         }
         return result;
@@ -220,7 +220,7 @@ public class AvbRebuilder {
         addKeyPair(keypair);
         var record = partitionRecords.get("vbmeta");
         if (record != null && record.vbmetaImage() != null) {
-            record.vbmetaImage().publicKey = keypair.publicKey;
+            record.vbmetaImage().publicKey = keypair.publicKey();
         }
         markVbmetaDirty("vbmeta", keypair);
     }

@@ -48,12 +48,11 @@ public class ManageBackupsFragment extends BackupListFragment {
     void refresh() {
         var activity = (BackupActivity) getActivity();
         if (activity == null || activity.service == null || busy || listCategory == null) return;
-        int request = ++generation;
         loaded = false;
         status = "正在读取备份";
         render();
         activity.runWithService(IAvbService::listBackups, (result, error) -> {
-            if (!isAdded() || activity.isFinishing() || request != generation) return;
+            if (!isAdded() || activity.isFinishing()) return;
             if (error != null) {
                 status = "读取失败：" + error.getMessage();
             } else {
@@ -150,7 +149,6 @@ public class ManageBackupsFragment extends BackupListFragment {
                 + "\n下次启动槽位：" + backup.optString("nextSlot")
                 + "\nBuild fingerprint：" + backup.optString("fingerprint", "")
                 + "\nFingerprint 属性：\n" + fingerprintText
-                + "\n来源路径模板：" + backup.optString("sourcePattern", "")
                 + "\n备份分区：\n" + String.join("\n", lines);
         var message = new android.widget.TextView(requireContext());
         message.setText(text);
@@ -199,7 +197,6 @@ public class ManageBackupsFragment extends BackupListFragment {
                 .setPositiveButton("删除", (d, w) -> {
                     var activity = (BackupActivity) requireActivity();
                     busy = true;
-                    generation++;
                     render();
                     if (!activity.runWithService(svc -> ManagedFileDeleter.delete(selected, svc::deleteBackup),
                             (result, error) -> {

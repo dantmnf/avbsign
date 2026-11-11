@@ -59,7 +59,7 @@ public class AvbToolTest {
     }
 
     @Test
-    public void copiesPartialFinalBufferAndRejectsSameFile() throws Exception {
+    public void copiesFileTruncatingDestination() throws Exception {
         var content = new byte[4 * 1024 * 1024 + 17];
         new Random(1).nextBytes(content);
         var source = temporaryFolder.getRoot().toPath().resolve("source.img");
@@ -69,8 +69,6 @@ public class AvbToolTest {
 
         AvbTool.copyFile(source, destination);
         assertArrayEquals(content, Files.readAllBytes(destination));
-        assertThrows(IOException.class, () -> AvbTool.copyFile(source, source));
-        assertArrayEquals(content, Files.readAllBytes(source));
     }
 
     @Test

@@ -28,6 +28,8 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
     private final EditSelection selection = new EditSelection();
     private Preference sourcePreference;
     private Preference rootKeyPreference;
+    private Preference addPartitionPreference;
+    private Preference importImagesPreference;
     private PreferenceCategory partitionCategory;
     private PreferenceCategory imagesCategory;
     private String source;
@@ -38,7 +40,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
     private boolean keyChosen;
     private boolean keysLoaded;
     private boolean fileOperationInProgress;
-    private int refreshGeneration;
 
     @Override
     public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
@@ -102,6 +103,12 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             return true;
         });
         signingCategory.addPreference(rootKeyPreference);
+
+        var footer = newPreference(requireContext(), "需要选择替换 bootloader 信任的密钥");
+        footer.setLayoutResource(R.layout.preference_footer_material3);
+        footer.setSelectable(false);
+        signingCategory.addPreference(footer);
+
         persistSettings();
         updatePreferences();
     }
@@ -120,6 +127,7 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         super.onViewCreated(view, savedInstanceState);
         setDivider(null);
         var list = getListView();
+        list.setItemAnimator(null);
         int horizontal = getResources().getDimensionPixelSize(R.dimen.expressive_list_horizontal_padding);
         list.setPaddingRelative(horizontal, list.getPaddingTop(), horizontal, list.getPaddingBottom());
         list.setClipToPadding(true);
@@ -134,7 +142,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
     void onServiceStateChanged() {
         var activity = (BootloaderSettingsActivity) getActivity();
         if (activity != null && activity.service == null) {
-            refreshGeneration++;
             keysLoaded = false;
             serviceStatus = activity.isShizukuGranted() ? "正在连接服务" : "请先在主界面授权 Shizuku";
             renderImages();
@@ -148,13 +155,12 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         if (activity == null || activity.service == null || rootKeyPreference == null) {
             return;
         }
-        var generation = ++refreshGeneration;
         keysLoaded = false;
         serviceStatus = "正在读取密钥和镜像";
         renderImages();
         updatePreferences();
         updateMenu();
-        boolean started = activity.runWithService(svc -> {
+        boolean started = activity.<FileState>runWithService(svc -> {
             var keys = svc.listFiles(AvbPaths.KEYS_DIR);
             var images = svc.listFiles(AvbPaths.BOOTLOADER_DIR);
             String match = null;
@@ -166,8 +172,7 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             }
             return new FileState(keys, images, match, error);
         }, (state, error) -> {
-            if (!isAdded() || activity.isFinishing() || activity.isDestroyed()
-                    || generation != refreshGeneration) {
+            if (!isAdded() || activity.isFinishing() || activity.isDestroyed()) {
                 return;
             }
             if (error != null) {
@@ -179,11 +184,11 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
                 return;
             }
             keyNames.clear();
-            keyNames.addAll(Arrays.asList(state.keys));
+            keyNames.addAll(Arrays.<String>asList(state.keys));
             matchingKey = state.match;
             matchingError = state.error;
             imageNames.clear();
-            imageNames.addAll(Arrays.asList(state.images));
+            imageNames.addAll(Arrays.<String>asList(state.images));
             if (BootloaderSettings.EXTERNAL.equals(source)) {
                 selection.retainAll(imageNames);
             }
@@ -213,9 +218,16 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             return;
         }
         var current = BootloaderSettings.CURRENT.equals(source);
+        boolean actionable = !selection.isEditing() && !fileOperationInProgress;
         sourcePreference.setSummary(current ? "当前启动槽位" : "外部文件");
-        sourcePreference.setEnabled(!selection.isEditing() && !fileOperationInProgress);
-        rootKeyPreference.setEnabled(!selection.isEditing() && !fileOperationInProgress);
+        sourcePreference.setEnabled(actionable);
+        rootKeyPreference.setEnabled(actionable);
+        if (addPartitionPreference != null) {
+            addPartitionPreference.setEnabled(actionable);
+        }
+        if (importImagesPreference != null) {
+            importImagesPreference.setEnabled(actionable);
+        }
         partitionCategory.setVisible(current);
         imagesCategory.setVisible(!current);
 
@@ -231,7 +243,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         } else if (current && matchingKey == null) {
             summary += "\n未找到与当前槽位 vbmeta 匹配的密钥";
         }
-        summary += "\n所选密钥必须被替换后的 bootloader 信任";
         rootKeyPreference.setSummary(summary);
     }
 
@@ -272,7 +283,7 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         }
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle("根密钥")
-                .setSingleChoiceItems(labels.toArray(new String[0]), selected, (dialog, which) -> {
+                .setSingleChoiceItems(labels.<String>toArray(new String[0]), selected, (dialog, which) -> {
                     if (which <= choices.size()) {
                         selectedKey = which == 0 ? "" : choices.get(which - 1);
                         keyChosen = true;
@@ -301,15 +312,15 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             preference.setOrder(order++);
             partitionCategory.addPreference(preference);
         }
-        var add = newPreference(requireContext(), "添加分区");
-        add.setOrder(Integer.MAX_VALUE);
-        add.setLayoutResource(R.layout.preference_add_row);
-        add.setEnabled(!selection.isEditing() && !fileOperationInProgress);
-        add.setOnPreferenceClickListener(preference -> {
+        addPartitionPreference = newPreference(requireContext(), "添加分区");
+        addPartitionPreference.setOrder(Integer.MAX_VALUE);
+        addPartitionPreference.setLayoutResource(R.layout.preference_add_row);
+        addPartitionPreference.setEnabled(!selection.isEditing() && !fileOperationInProgress);
+        addPartitionPreference.setOnPreferenceClickListener(preference -> {
             showAddPartition();
             return true;
         });
-        partitionCategory.addPreference(add);
+        partitionCategory.addPreference(addPartitionPreference);
     }
 
     private void renderImages() {
@@ -318,11 +329,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         }
         imagesCategory.removeAll();
         int order = 0;
-        var info = newPreference(requireContext(), "仅刷写 .img 文件，导入和删除立即生效");
-        info.setOrder(order++);
-        info.setLayoutResource(R.layout.preference_info_row);
-        info.setSelectable(false);
-        imagesCategory.addPreference(info);
         if (!keysLoaded || fileOperationInProgress || imageNames.isEmpty()) {
             var message = newPreference(requireContext(), fileOperationInProgress ? "正在处理文件"
                     : !keysLoaded ? serviceStatus : "暂无文件");
@@ -338,15 +344,21 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
                 imagesCategory.addPreference(preference);
             }
         }
-        var add = newPreference(requireContext(), "导入文件（可多选）");
-        add.setOrder(Integer.MAX_VALUE);
-        add.setLayoutResource(R.layout.preference_add_row);
-        add.setEnabled(!selection.isEditing() && !fileOperationInProgress);
-        add.setOnPreferenceClickListener(preference -> {
+        importImagesPreference = newPreference(requireContext(), "导入文件（可多选）");
+        importImagesPreference.setOrder(order++);
+        importImagesPreference.setLayoutResource(R.layout.preference_add_row);
+        importImagesPreference.setEnabled(!selection.isEditing() && !fileOperationInProgress);
+        importImagesPreference.setOnPreferenceClickListener(preference -> {
             startImportImages();
             return true;
         });
-        imagesCategory.addPreference(add);
+        imagesCategory.addPreference(importImagesPreference);
+
+        var footer = newPreference(requireContext(), "导入文件命名需为 <分区名>.img，分区名不带槽位后缀（例：abl.img）");
+        footer.setOrder(order);
+        footer.setLayoutResource(R.layout.preference_footer_material3);
+        footer.setSelectable(false);
+        imagesCategory.addPreference(footer);
     }
 
     private void startImportImages() {
@@ -383,8 +395,8 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         updatePreferences();
         updateMenu();
         var context = activity.getApplicationContext();
-        boolean started = activity.runWithService(svc -> ManagedFileImporter.importFiles(context, svc, uris,
-                AvbPaths.BOOTLOADER_DIR, null), (result, error) -> {
+        boolean started = activity.<ManagedFileImporter.Result>runWithService(svc -> ManagedFileImporter.importFiles(context, svc, uris,
+                AvbPaths.BOOTLOADER_DIR), (result, error) -> {
             if (!isAdded() || activity.isFinishing() || activity.isDestroyed()) {
                 return;
             }
@@ -411,7 +423,7 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         renderImages();
         updatePreferences();
         updateMenu();
-        boolean started = activity.runWithService(svc -> {
+        boolean started = activity.<ManagedFileDeleter.Result>runWithService(svc -> {
             return ManagedFileDeleter.delete(names,
                     name -> svc.deleteFile(AvbPaths.BOOTLOADER_DIR, name));
         }, (result, error) -> {
@@ -426,7 +438,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
                 }
             }
             ManagedFileDeleter.showErrors(activity, result, error);
-            renderPartitions();
             refreshFiles();
             updatePreferences();
             updateMenu();
@@ -462,18 +473,32 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             return;
         }
         selection.enter();
-        renderPartitions();
-        renderImages();
+        notifyEditableItemsChanged();
         updatePreferences();
         updateMenu();
     }
 
     void exitEditMode() {
         selection.exit();
-        renderPartitions();
-        renderImages();
+        notifyEditableItemsChanged();
         updatePreferences();
         updateMenu();
+    }
+
+    private void notifyEditableItemsChanged() {
+        notifyCategoryItemsChanged(partitionCategory);
+        notifyCategoryItemsChanged(imagesCategory);
+    }
+
+    private static void notifyCategoryItemsChanged(PreferenceCategory category) {
+        if (category == null) {
+            return;
+        }
+        for (int i = 0; i < category.getPreferenceCount(); i++) {
+            if (category.getPreference(i) instanceof SelectablePreference selectable) {
+                selectable.refresh();
+            }
+        }
     }
 
     void confirmDeleteSelection() {
@@ -482,10 +507,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         }
         var names = selection.snapshot();
         boolean current = BootloaderSettings.CURRENT.equals(source);
-        if (current && names.size() >= partitions.size()) {
-            ((BootloaderSettingsActivity) requireActivity()).toast("请至少保留一个分区");
-            return;
-        }
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(current ? "删除分区" : "删除文件")
                 .setMessage(current ? "从替换列表中移除所选分区？"
@@ -495,7 +516,10 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
                     if (current) {
                         partitions.removeAll(names);
                         persistSettings();
-                        exitEditMode();
+                        selection.exit();
+                        renderPartitions();
+                        updatePreferences();
+                        updateMenu();
                     } else {
                         deleteImages(names);
                     }
@@ -528,15 +552,21 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         @Override
         public void onBindViewHolder(@NonNull PreferenceViewHolder holder) {
             super.onBindViewHolder(holder);
-            var layout = (ListItemLayout) holder.itemView;
-            PreferenceListPosition.update(layout, this);
-            ListItemCardView card = layout.findViewById(R.id.list_item_card);
-            layout.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            layout.setFocusable(false);
-            boolean actionable = isSelectable() && isEnabled();
-            card.setFocusable(actionable);
-            card.setOnClickListener(actionable ? v -> layout.performClick() : null);
-            card.setClickable(actionable);
+            holder.itemView.setBackground(null);
+            holder.itemView.setClickable(false);
+            holder.itemView.setFocusable(false);
+            if (holder.itemView instanceof ListItemLayout layout) {
+                PreferenceListPosition.update(layout, this);
+                ListItemCardView card = layout.<ListItemCardView>findViewById(R.id.list_item_card);
+                layout.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+                boolean actionable = isSelectable() && isEnabled();
+                if (card != null) {
+                    card.setFocusable(actionable);
+                    card.setOnClickListener(actionable ? v -> layout.performClick() : null);
+                    card.setClickable(actionable);
+                }
+            }
         }
     }
 
@@ -550,6 +580,10 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
             setLayoutResource(R.layout.list_item_row);
             setIconSpaceReserved(false);
             setPersistent(false);
+        }
+
+        void refresh() {
+            notifyChanged();
         }
 
         @Override
@@ -580,17 +614,6 @@ public class BootloaderSettingsFragment extends PreferenceFragmentCompat {
         }
     }
 
-    private static final class FileState {
-        final String[] keys;
-        final String[] images;
-        final String match;
-        final String error;
-
-        FileState(String[] keys, String[] images, String match, String error) {
-            this.keys = keys;
-            this.images = images;
-            this.match = match;
-            this.error = error;
-        }
+    private record FileState(String[] keys, String[] images, String match, String error) {
     }
 }

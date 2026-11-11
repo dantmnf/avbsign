@@ -10,8 +10,9 @@ import android.util.Log;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,34 +37,22 @@ final class ManagedFileImporter {
         return result;
     }
 
-    static Result importFiles(Context context, IAvbService service, List<Uri> uris,
-                              String dir, String fixedName) {
+    static Result importFiles(Context context, IAvbService service, List<Uri> uris, String dir) {
         var result = new Result();
         for (var uri : uris) {
-            if (uri == null) {
-                result.errors.add("无法获取文件地址");
-                continue;
-            }
-            String name = fixedName;
+            String name = null;
             File staged = null;
             try {
-                if (name == null) {
-                    name = displayName(context, uri);
-                }
-                if (name == null || name.isEmpty() || name.equals(".") || name.equals("..")) {
+                name = displayName(context, uri);
+                if (name == null || name.isEmpty()) {
                     throw new IOException("无法获取有效文件名");
                 }
                 staged = File.createTempFile("avbsign-import-", ".tmp", context.getCacheDir());
-                try (var in = context.getContentResolver().openInputStream(uri);
-                     var out = new FileOutputStream(staged)) {
+                try (var in = context.getContentResolver().openInputStream(uri)) {
                     if (in == null) {
                         throw new IOException("无法打开文件");
                     }
-                    var buffer = new byte[65536];
-                    int count;
-                    while ((count = in.read(buffer)) != -1) {
-                        out.write(buffer, 0, count);
-                    }
+                    Files.copy(in, staged.toPath(), StandardCopyOption.REPLACE_EXISTING);
                 }
                 service.importFile(staged.getAbsolutePath(), dir, name);
                 result.imported++;

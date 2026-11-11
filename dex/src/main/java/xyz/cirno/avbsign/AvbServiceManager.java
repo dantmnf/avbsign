@@ -46,7 +46,6 @@ public final class AvbServiceManager {
 
     private volatile IAvbService service;
     private boolean binding;
-    private boolean shizukuListenersRegistered;
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -67,32 +66,22 @@ public final class AvbServiceManager {
         }
     };
 
-    private final Shizuku.OnRequestPermissionResultListener permissionResultListener = (requestCode, grantResult) -> {
-        if (grantResult == PackageManager.PERMISSION_GRANTED) {
-            ensureBound();
-        }
-        notifyStateChanged();
-    };
-
     private AvbServiceManager() {
-        registerShizukuListeners();
-    }
-
-    private void registerShizukuListeners() {
-        if (shizukuListenersRegistered) {
-            return;
-        }
-        shizukuListenersRegistered = true;
         Shizuku.addBinderReceivedListenerSticky(() -> {
             ensureBound();
-            notifyStateChanged();
+            notifyListeners();
         });
         Shizuku.addBinderDeadListener(() -> {
             binding = false;
             service = null;
-            notifyStateChanged();
+            notifyListeners();
         });
-        Shizuku.addRequestPermissionResultListener(permissionResultListener);
+        Shizuku.addRequestPermissionResultListener((requestCode, grantResult) -> {
+            if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                ensureBound();
+            }
+            notifyListeners();
+        });
     }
 
     public void addListener(Listener listener) {
@@ -133,7 +122,7 @@ public final class AvbServiceManager {
                 .daemon(false)
                 .processNameSuffix("service")
                 .debuggable(false)
-                .version(3);
+                .version(5);
         try {
             binding = true;
             Shizuku.bindUserService(args, serviceConnection);
@@ -163,18 +152,10 @@ public final class AvbServiceManager {
     }
 
     private void notifyListeners() {
-        var svc = service;
         mainHandler.post(() -> {
+            var svc = service;
             for (var l : listeners) {
                 l.onServiceChanged(svc);
-            }
-        });
-    }
-
-    private void notifyStateChanged() {
-        mainHandler.post(() -> {
-            for (var l : listeners) {
-                l.onServiceChanged(service);
             }
         });
     }

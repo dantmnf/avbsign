@@ -18,6 +18,12 @@ android {
         aidl true
     }
 
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled true
@@ -69,5 +75,4 @@ dependencies {
     implementation libs.shizuku.api
     implementation libs.shizuku.provider
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
-    testImplementation 'junit:junit:4.13.2'
 }

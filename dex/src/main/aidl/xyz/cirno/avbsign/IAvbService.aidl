@@ -5,17 +5,17 @@ import xyz.cirno.avbsign.IAvbLogCallback;
 interface IAvbService {
     void destroy() = 16777114;
 
-    long setLogCallback(IAvbLogCallback callback) = 1;
+    void setLogCallback(IAvbLogCallback callback) = 1;
 
     /** Current boot slot suffix (e.g. "_a"), or empty on non-A/B devices. */
-    String getSlotSuffix() = 2;
+    String getActiveSlotSuffix() = 2;
 
     /** Service process uid; 0 means the service is running as root. */
     int getUid() = 3;
 
     String check(String pattern) = 4;
 
-    String fix(String sourcePattern, String keysDir, String rootKeyPath, String backupDir,
+    String fix(String sourcePattern, String keysDir, String rootKeyPath, boolean autoBackup,
                boolean replaceBootloader, boolean currentSource, in String[] partitions) = 5;
 
     /** List file names in a directory under /data/adb. */

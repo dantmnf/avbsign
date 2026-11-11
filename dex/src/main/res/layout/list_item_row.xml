@@ -17,6 +17,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="40dp"
+            android:duplicateParentState="true"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -25,7 +26,8 @@
                 style="@style/Widget.Material3.TextView.ListItem.LabelText"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_weight="1" />
+                android:layout_weight="1"
+                android:duplicateParentState="true" />
 
             <com.google.android.material.checkbox.MaterialCheckBox
                 android:id="@+id/list_item_checkbox"
@@ -33,6 +35,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
                 android:importantForAccessibility="no"
                 android:visibility="gone" />
         </LinearLayout>

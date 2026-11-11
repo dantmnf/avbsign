@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ScrollView;
@@ -18,6 +19,7 @@ public class OperationActivity extends BaseAvbActivity {
     static final String EXTRA_PATTERN = "pattern";
     static final String EXTRA_ROOT_KEY = "root_key";
     static final String EXTRA_BACKUP = "backup";
+    static final String EXTRA_AUTO_BACKUP = "auto_backup";
     static final String EXTRA_CURRENT = "current";
     static final String EXTRA_PARTITIONS = "partitions";
     static final String EXTRA_REPLACE_BOOTLOADER = "replace_bootloader";
@@ -45,7 +47,7 @@ public class OperationActivity extends BaseAvbActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (model.state.isFinished()) {
+                if (model.finished) {
                     finish();
                 }
             }
@@ -56,8 +58,8 @@ public class OperationActivity extends BaseAvbActivity {
     }
 
     private void render() {
-        logView.setText(model.state.log());
-        backButton.setEnabled(model.state.isFinished());
+        logView.setText(model.log.toString());
+        backButton.setEnabled(model.finished);
         scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
     }
 
@@ -68,17 +70,34 @@ public class OperationActivity extends BaseAvbActivity {
     }
 
     public static class OperationModel extends ViewModel {
-        private final Handler handler = new Handler(Looper.getMainLooper());
-        private final OperationState state = new OperationState();
+        private static final int MESSAGE_APPEND = 1;
+        private static final int MESSAGE_COMPLETE = 2;
+
+        private final Handler handler = new Handler(Looper.getMainLooper()) {
+            @Override
+            public void handleMessage(Message msg) {
+                switch (msg.what) {
+                    case MESSAGE_APPEND:
+                        if (!finished) {
+                            append((String) msg.obj);
+                        }
+                        break;
+                    case MESSAGE_COMPLETE:
+                        complete((String) msg.obj);
+                        break;
+                }
+            }
+        };
+        private final StringBuilder log = new StringBuilder();
+        private boolean started;
+        private boolean finished;
         private Runnable observer;
-        private String orderingError;
-        private String operationResult;
-        private boolean operationEnded;
 
         private void start(Intent intent, boolean restored) {
-            if (!state.start()) {
+            if (started) {
                 return;
             }
+            started = true;
             if (restored) {
                 complete("运行状态已丢失，请检查操作结果后再试。");
                 return;
@@ -99,24 +118,24 @@ public class OperationActivity extends BaseAvbActivity {
                     : RESTORE.equals(operation) ? "恢复失败：" : "操作失败：";
             var callback = new IAvbLogCallback.Stub() {
                 @Override
-                public void onLog(long sequence, int level, String message) {
-                    handler.post(() -> appendLog(sequence, message));
+                public void onLog(int level, String message) {
+                    handler.obtainMessage(MESSAGE_APPEND, message).sendToTarget();
                 }
             };
             String result;
             try {
                 int uid = svc.getUid();
                 if (uid != 0) {
-                    handler.post(() -> append("警告：服务未以 root 运行（uid=" + uid
-                            + "），无法读写块设备。请使用由 root 启动的 Shizuku。"));
+                    handler.obtainMessage(MESSAGE_APPEND, "警告：服务未以 root 运行（uid=" + uid
+                            + "），无法读写块设备。请使用由 root 启动的 Shizuku。").sendToTarget();
                 }
                 svc.setLogCallback(callback);
-                var backup = intent.getStringExtra(EXTRA_BACKUP);
                 if (CHECK.equals(operation)) {
                     result = svc.check(intent.getStringExtra(EXTRA_PATTERN));
                 } else if (FIX.equals(operation)) {
                     result = svc.fix(intent.getStringExtra(EXTRA_PATTERN), AvbPaths.KEYS_DIR,
-                            intent.getStringExtra(EXTRA_ROOT_KEY), backup,
+                            intent.getStringExtra(EXTRA_ROOT_KEY),
+                            intent.getBooleanExtra(EXTRA_AUTO_BACKUP, true),
                             intent.getBooleanExtra(EXTRA_REPLACE_BOOTLOADER, false),
                             intent.getBooleanExtra(EXTRA_CURRENT, false),
                             intent.getStringArrayExtra(EXTRA_PARTITIONS));
@@ -124,74 +143,32 @@ public class OperationActivity extends BaseAvbActivity {
                     result = svc.createBackup(intent.getStringArrayExtra(EXTRA_PARTITIONS),
                             intent.getStringExtra(EXTRA_SLOT));
                 } else if (RESTORE.equals(operation)) {
-                    result = svc.restoreBackup(backup, intent.getStringExtra(EXTRA_SLOT));
+                    result = svc.restoreBackup(intent.getStringExtra(EXTRA_BACKUP),
+                            intent.getStringExtra(EXTRA_SLOT));
                 } else {
                     throw new IllegalArgumentException("未知操作：" + operation);
                 }
             } catch (Exception e) {
                 result = failure + e;
-            }
-            try {
-                long lastSequence = svc.setLogCallback(null);
-                var finalResult = result;
-                handler.post(() -> finishAfterLogs(lastSequence, finalResult));
-            } catch (Exception e) {
-                var finalResult = result + "\n停止接收日志失败，日志可能不完整：" + e;
-                handler.post(() -> complete(finalResult));
-            }
-        }
-
-        private void appendLog(long sequence, String message) {
-            if (state.isFinished() || orderingError != null) {
-                return;
-            }
-            try {
-                state.appendLog(sequence, message);
-            } catch (IllegalArgumentException e) {
-                orderingError = e.getMessage();
-                if (operationEnded) {
-                    complete(operationResult + "\n日志接收失败：" + orderingError);
+            } finally {
+                try {
+                    svc.setLogCallback(null);
+                } catch (Exception ignored) {
                 }
-                return;
             }
-            if (observer != null) {
-                observer.run();
-            }
-        }
-
-        private void finishAfterLogs(long lastSequence, String result) {
-            if (state.isFinished()) {
-                return;
-            }
-            operationEnded = true;
-            operationResult = result;
-            if (orderingError != null) {
-                complete(result + "\n日志接收失败：" + orderingError);
-                return;
-            }
-            try {
-                state.finishAfterLogs(lastSequence, result);
-            } catch (IllegalArgumentException e) {
-                complete(result + "\n日志接收失败：" + e.getMessage());
-                return;
-            }
-            if (observer != null) {
-                observer.run();
-            }
+            handler.obtainMessage(MESSAGE_COMPLETE, result).sendToTarget();
         }
 
         private void append(String message) {
-            state.append(message);
+            log.append(message).append('\n');
             if (observer != null) {
                 observer.run();
             }
         }
 
         private void complete(String result) {
-            state.complete(result);
-            if (observer != null) {
-                observer.run();
-            }
+            finished = true;
+            append(result);
         }
     }
 }

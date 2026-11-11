@@ -9,8 +9,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
-import androidx.annotation.NonNull;
 import androidx.activity.OnBackPressedCallback;
+import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -21,6 +21,7 @@ import com.google.android.material.listitem.ListItemLayout;
 import com.google.android.material.listitem.ListItemViewHolder;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * Import and delete managed files (signing keys or bootloader images) stored
@@ -30,25 +31,20 @@ public class ManageFilesActivity extends BaseAvbActivity {
 
     public static final String EXTRA_DIR = "dir";
     public static final String EXTRA_TITLE = "title";
-    /** When set, imported files are always stored under this fixed name. */
-    public static final String EXTRA_FIXED_NAME = "fixed_name";
 
     private static final int REQUEST_CODE_IMPORT = 10;
 
     private String dir;
-    private String fixedName;
     private TextView statusView;
     private final FileAdapter fileAdapter = new FileAdapter();
     private final EditSelection selection = new EditSelection();
     private boolean filesLoaded;
     private boolean fileOperationInProgress;
-    private int refreshGeneration;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         dir = getIntent().getStringExtra(EXTRA_DIR);
-        fixedName = getIntent().getStringExtra(EXTRA_FIXED_NAME);
         if (savedInstanceState != null) {
             selection.restore(savedInstanceState.getBoolean("editing"),
                     savedInstanceState.getStringArrayList("selected_items"));
@@ -69,6 +65,7 @@ public class ManageFilesActivity extends BaseAvbActivity {
         statusView = findViewById(R.id.files_status);
         RecyclerView fileList = findViewById(R.id.files_list);
         fileList.setLayoutManager(new LinearLayoutManager(this));
+        fileList.setItemAnimator(null);
         fileList.setAdapter(fileAdapter);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -78,7 +75,7 @@ public class ManageFilesActivity extends BaseAvbActivity {
                         toast("请等待文件操作完成");
                     } else {
                         selection.exit();
-                        fileAdapter.notifyDataSetChanged();
+                        fileAdapter.notifyItemsChanged();
                         invalidateOptionsMenu();
                     }
                 } else {
@@ -117,7 +114,7 @@ public class ManageFilesActivity extends BaseAvbActivity {
                 confirmDeleteSelection();
             } else if (!fileOperationInProgress) {
                 selection.enter();
-                fileAdapter.notifyDataSetChanged();
+                fileAdapter.notifyItemsChanged();
                 invalidateOptionsMenu();
             }
             return true;
@@ -134,7 +131,6 @@ public class ManageFilesActivity extends BaseAvbActivity {
     @Override
     protected void onShizukuStateChanged() {
         if (statusView != null && service == null) {
-            refreshGeneration++;
             filesLoaded = false;
             fileAdapter.names.clear();
             fileAdapter.notifyDataSetChanged();
@@ -169,13 +165,12 @@ public class ManageFilesActivity extends BaseAvbActivity {
         if (service == null || statusView == null || fileOperationInProgress) {
             return;
         }
-        var generation = ++refreshGeneration;
         filesLoaded = false;
         fileAdapter.notifyDataSetChanged();
         invalidateOptionsMenu();
         showStatus("正在读取文件");
-        boolean started = runWithService(svc2 -> svc2.listFiles(dir), (names, error) -> {
-            if (generation != refreshGeneration || isFinishing() || isDestroyed()) {
+        boolean started = runWithService(svc -> svc.listFiles(dir), (names, error) -> {
+            if (isFinishing() || isDestroyed()) {
                 return;
             }
             if (error != null) {
@@ -183,11 +178,7 @@ public class ManageFilesActivity extends BaseAvbActivity {
                 return;
             }
             fileAdapter.names.clear();
-            for (var name : names) {
-                if (fixedName == null || fixedName.equals(name)) {
-                    fileAdapter.names.add(name);
-                }
-            }
+            fileAdapter.names.addAll(Arrays.asList(names));
             selection.retainAll(fileAdapter.names);
             filesLoaded = true;
             showStatus("");
@@ -218,9 +209,6 @@ public class ManageFilesActivity extends BaseAvbActivity {
     }
 
     private void setFileOperationInProgress(boolean inProgress) {
-        if (inProgress) {
-            refreshGeneration++;
-        }
         fileOperationInProgress = inProgress;
         fileAdapter.notifyDataSetChanged();
         invalidateOptionsMenu();
@@ -229,9 +217,8 @@ public class ManageFilesActivity extends BaseAvbActivity {
     private void deleteManagedFiles(ArrayList<String> names) {
         setFileOperationInProgress(true);
         showStatus("正在删除文件");
-        boolean started = runWithService(svc -> {
-            return ManagedFileDeleter.delete(names, name -> svc.deleteFile(dir, name));
-        }, (result, error) -> {
+        boolean started = runWithService(svc -> ManagedFileDeleter.delete(names,
+                name -> svc.deleteFile(dir, name)), (result, error) -> {
             if (isFinishing() || isDestroyed()) {
                 return;
             }
@@ -276,9 +263,13 @@ public class ManageFilesActivity extends BaseAvbActivity {
             return new ListItemViewHolder(view);
         }
 
+        void notifyItemsChanged() {
+            notifyItemRangeChanged(0, getItemCount(), Boolean.TRUE);
+        }
+
         @Override
         public void onBindViewHolder(@NonNull ListItemViewHolder holder, int position) {
-            holder.bind(position, getItemCount());
+            holder.bind();
             ListItemCardView card = holder.itemView.findViewById(R.id.list_item_card);
             if (holder.getItemViewType() == FILE) {
                 var name = names.get(position);
@@ -287,24 +278,19 @@ public class ManageFilesActivity extends BaseAvbActivity {
                 EditableListItem.bind((ListItemLayout) holder.itemView,
                         selection.isEditing() && filesLoaded && !fileOperationInProgress,
                         selection.contains(name), () -> {
-                    if (!selection.isEditing() || !filesLoaded || fileOperationInProgress || !names.contains(name)) {
-                        return;
-                    }
                     selection.toggle(name);
                     int currentPosition = holder.getBindingAdapterPosition();
                     if (currentPosition != RecyclerView.NO_POSITION) {
-                        notifyItemChanged(currentPosition);
+                        notifyItemChanged(currentPosition, Boolean.TRUE);
                     }
                     invalidateOptionsMenu();
                 });
             } else if (holder.getItemViewType() == IMPORT) {
                 TextView title = holder.itemView.findViewById(android.R.id.title);
-                title.setText(fixedName != null ? "导入并保存为 " + fixedName : "导入文件（可多选）");
+                title.setText("导入文件（可多选）");
                 boolean canImport = !selection.isEditing() && !fileOperationInProgress;
                 holder.itemView.setEnabled(canImport);
                 card.setEnabled(canImport);
-                title.setEnabled(canImport);
-                holder.itemView.findViewById(R.id.list_add_icon).setEnabled(canImport);
                 card.setOnClickListener(canImport ? v -> startImport() : null);
                 card.setClickable(canImport);
                 card.setFocusable(canImport);
@@ -338,7 +324,7 @@ public class ManageFilesActivity extends BaseAvbActivity {
         var context = getApplicationContext();
         setFileOperationInProgress(true);
         showStatus("正在导入文件");
-        boolean started = runWithService(svc -> ManagedFileImporter.importFiles(context, svc, uris, dir, fixedName),
+        boolean started = runWithService(svc -> ManagedFileImporter.importFiles(context, svc, uris, dir),
                 (result, error) -> {
             if (isFinishing() || isDestroyed()) {
                 return;

@@ -31,3 +31,6 @@
 -keep class xyz.cirno.avbsign.AvbService { *; }
 -keep class xyz.cirno.avbsign.IAvbService$* { *; }
 -keep class xyz.cirno.avbsign.IAvbLogCallback$* { *; }
+-keep class xyz.cirno.avbsign.AvbTool {
+    private static native <methods>;
+}

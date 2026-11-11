@@ -23,12 +23,12 @@ import xyz.cirno.avb.VerifiedBootMetaImage;
 import xyz.cirno.avb.util.Logger;
 
 public class AvbVerifier {
-    private PartitionProvider provider;
-    private List<VerificationIssue> issues = new ArrayList<>();
-    private Map<String, AvbPartitionInfo> cachedPartitionInfo = new HashMap<>();
-    private Map<String, ParsedVerifiedBootMetaImage> cachedVbmetaImages = new HashMap<>();
-    private Set<PartitionReference> partitionReferences = new HashSet<>();
-    private Set<String> dirtyVbmetaImages = new HashSet<>();
+    private final PartitionProvider provider;
+    private final List<VerificationIssue> issues = new ArrayList<>();
+    private final Map<String, AvbPartitionInfo> cachedPartitionInfo = new HashMap<>();
+    private final Map<String, ParsedVerifiedBootMetaImage> cachedVbmetaImages = new HashMap<>();
+    private final Set<PartitionReference> partitionReferences = new HashSet<>();
+    private final Set<String> dirtyVbmetaImages = new HashSet<>();
 
     public AvbVerifier(PartitionProvider provider) {
         this.provider = provider;
@@ -246,7 +246,6 @@ public class AvbVerifier {
                 addIssue(new VerificationIssue.HashMismatch(fromVbmetaPartition, descriptorIndex, actualSize,
                         hash_verify.actualHash));
                 // skip hash verification on parent descriptor
-                return;
             }
         }
     }

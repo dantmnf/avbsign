@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 
 public class AndroidBootImage {
-    private RandomAccessFile f;
+    private final RandomAccessFile f;
 
     private static final byte[] ANDROID_BOOT_MAGIC = {
             0x41, 0x4E, 0x44, 0x52, 0x4F, 0x49, 0x44, 0x21 // "ANDROID!"
@@ -21,7 +21,7 @@ public class AndroidBootImage {
         VENDOR
     }
 
-    private ImageType type;
+    private final ImageType type;
 
     private AndroidBootImage(RandomAccessFile f, ImageType type) {
         this.f = f;

@@ -17,23 +17,27 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:minHeight="40dp"
+            android:duplicateParentState="true"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <ImageView
                 android:id="@+id/list_add_icon"
+                style="@style/Widget.Material3.ImageView.ListItem.LeadingIcon"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
+                android:duplicateParentState="true"
                 android:importantForAccessibility="no"
                 android:src="@drawable/ic_list_add"
                 app:tint="@color/list_add_foreground" />
 
             <TextView
                 android:id="@android:id/title"
+                style="@style/Widget.Material3.TextView.ListItem.LabelText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
-                android:textAppearance="?attr/textAppearanceLabelLarge"
+                android:duplicateParentState="true"
                 android:textColor="@color/list_add_foreground" />
         </LinearLayout>
     </com.google.android.material.listitem.ListItemCardView>
